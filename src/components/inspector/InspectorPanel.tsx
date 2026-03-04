@@ -102,15 +102,15 @@ export function InspectorPanel() {
   const renderEditor = () => {
     switch (node.kind) {
       case "agent":
-        return <AgentEditor node={node} />;
+        return <AgentEditor key={node.id} node={node} />;
       case "skill":
-        return <SkillEditor node={node} />;
+        return <SkillEditor key={node.id} node={node} />;
       case "group":
-        return <GroupEditor node={node} />;
+        return <GroupEditor key={node.id} node={node} />;
       case "pipeline":
-        return <PipelineEditor node={node} />;
+        return <PipelineEditor key={node.id} node={node} />;
       case "settings":
-        return <SettingsEditor node={node} />;
+        return <SettingsEditor key={node.id} node={node} />;
       case "context":
         return (
           <div>

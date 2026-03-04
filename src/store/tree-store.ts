@@ -290,7 +290,7 @@ export const useTreeStore = create<TreeStore>()((set, get) => ({
 
       // Load metadata first to get owner name and hierarchy
       const metadata = await get().loadTreeMetadata(path);
-      const ownerName = metadata?.owner.name ?? "Kevin";
+      const ownerName = metadata?.owner.name ?? "Owner";
 
       // Create synthetic human root node
       const root = createRootNode(ownerName);
@@ -507,7 +507,7 @@ export const useTreeStore = create<TreeStore>()((set, get) => ({
     }
 
     const updated: TreeMetadata = {
-      owner: metadata?.owner ?? { name: "Kevin", description: "" },
+      owner: metadata?.owner ?? { name: "Owner", description: "" },
       hierarchy,
       positions,
       groups: groups.length > 0 ? groups : undefined,
@@ -2298,7 +2298,7 @@ IMPORTANT: Each agent already has their full skill file content above. Pass it d
     const next = new Map<string, AuiNode>();
 
     // Root node with the target layout's owner info
-    const ownerName = targetMeta.owner?.name ?? "Kevin";
+    const ownerName = targetMeta.owner?.name ?? "Owner";
     next.set("root", createRootNode(ownerName));
 
     // Parse all discovered files and apply the target layout's hierarchy
@@ -2409,7 +2409,7 @@ IMPORTANT: Each agent already has their full skill file content above. Pass it d
 
     // Create blank metadata with only the root node
     const blankMeta: TreeMetadata = {
-      owner: get().metadata?.owner ?? { name: "Kevin", description: "" },
+      owner: get().metadata?.owner ?? { name: "Owner", description: "" },
       hierarchy: {},
       positions: {},
       groups: undefined,
