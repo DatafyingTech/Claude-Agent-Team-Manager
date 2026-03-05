@@ -94,6 +94,11 @@ A content creator's 7-agent team handles the full lifecycle: Reddit scouts find 
 
 ---
 
+### Work on your agent team anywhere!
+v0.8 introduces remote capabilities!
+<img width="406" height="750" alt="update v0 8 1" src="https://github.com/user-attachments/assets/6fa0167b-1432-4291-afeb-55eae271a05e" />
+
+
 ## Get Running in 60 Seconds
 
 **Download the installer:**
