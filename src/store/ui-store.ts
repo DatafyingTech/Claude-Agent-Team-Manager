@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { REMOTE_CONFIG_DEFAULTS, type RemoteConfig } from "@/types/remote";
 import type { RelayStatus } from "@/types/remote";
 import { remoteSync } from "@/services/remote-sync";
+import { useTreeStore } from "@/store/tree-store";
 
 /** Module-level storage for event listener unsubscribe functions */
 let unsubscribers: Array<() => void> = [];
@@ -307,6 +308,10 @@ export const useUiStore = create<UiStore>()((set, get) => ({
 
     // Initialize Tauri event listeners for server started/stopped events
     remoteSync.init();
+
+    // Register tree-store push/reconnect handlers so mobile get_tree requests work
+    const unsubTree = useTreeStore.getState().initRemoteSync();
+    unsubscribers.push(unsubTree);
   },
 
   disconnectRemote() {
@@ -340,6 +345,10 @@ export const useUiStore = create<UiStore>()((set, get) => ({
       });
     });
     unsubscribers.push(unsub);
+
+    // Register tree-store push/reconnect handlers so mobile get_tree requests work
+    const unsubTree = useTreeStore.getState().initRemoteSync();
+    unsubscribers.push(unsubTree);
   },
 
   disconnectRelay() {
