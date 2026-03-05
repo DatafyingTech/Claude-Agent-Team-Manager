@@ -1,12 +1,18 @@
 atm-relay.datafying.tech {
-    reverse_proxy localhost:8080
-
-    # WebSocket support
-    @websocket {
-        header Connection *Upgrade*
-        header Upgrade    websocket
+    # API endpoints → relay server
+    handle /health {
+        reverse_proxy localhost:8080
     }
-    reverse_proxy @websocket localhost:8080
+    handle /ws {
+        reverse_proxy localhost:8080
+    }
+
+    # Mobile web client — serve static files at root
+    handle {
+        root * /opt/atm-relay/www
+        file_server
+        try_files {path} /index.html
+    }
 
     # Security headers
     header {

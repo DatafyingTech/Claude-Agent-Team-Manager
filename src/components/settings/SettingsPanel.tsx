@@ -531,6 +531,9 @@ function RemoteAccessSection() {
     setRemoteConfig({ enabled });
     try {
       if (enabled) {
+        // Register event listeners BEFORE starting server so we don't miss
+        // the remote-server-started event (which sets _connected = true).
+        await connectRemote();
         const info = await invoke<RemoteInfo>("start_remote_server", {
           port: remoteConfig.port,
           exposeOnNetwork: remoteConfig.exposeOnNetwork,
@@ -541,7 +544,6 @@ function RemoteAccessSection() {
         } catch { /* QR optional */ }
         setRemoteInfo(info);
         setServerRunning(true);
-        connectRemote();
       } else {
         try { await invoke("stop_remote_server"); } catch { /* ignore */ }
         disconnectRemote();
@@ -567,7 +569,9 @@ function RemoteAccessSection() {
         // Generate QR code with relay info — read fresh state after await
         const status = useUiStore.getState().relayStatus;
         if (status.roomCode) {
-          const qrContent = `https://atm.datafying.tech?code=${status.roomCode}&relay=${encodeURIComponent(remoteConfig.relayUrl)}`;
+          // Serve mobile client from the relay domain itself (Caddy serves static files at root)
+          const relayHttps = remoteConfig.relayUrl.replace("wss://", "https://");
+          const qrContent = `${relayHttps}?code=${status.roomCode}`;
           try {
             const qrDataUri = await invoke<string>("generate_qr_code", { url: qrContent });
             setRemoteInfo({

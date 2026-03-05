@@ -247,8 +247,8 @@ function connectWebSocket() {
 
   let wsUrl;
   if (state.relayMode) {
-    // Cloud relay mode: connect to relay server
-    wsUrl = state.relayUrl;
+    // Cloud relay mode: connect to relay server's /ws endpoint
+    wsUrl = state.relayUrl.replace(/\/+$/, '') + '/ws';
   } else {
     // LAN mode: connect to local server
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
