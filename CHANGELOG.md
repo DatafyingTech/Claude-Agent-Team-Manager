@@ -1,5 +1,33 @@
 # ATM (Agent Team Manager) — Changelog
 
+## v0.8.2 — March 5, 2026
+
+### Security Hotfix: Cloud Relay Hardening
+
+**High Priority Fixes:**
+- **PIN auth gate for cloud mode** — desktop no longer sends full_sync until mobile provides correct PIN over encrypted channel. Prevents unauthorized data access via room code guessing
+- **Bounded relay channels** — relay server now uses bounded mpsc channels (128 capacity) with backpressure. Slow or malicious clients get disconnected instead of consuming unlimited memory
+- **Join rate limiting** — relay limits join attempts to 10 per minute per IP (governor GCRA). Prevents room code brute-force attacks
+- **Command injection prevention** — `create_scheduled_task` now escapes single quotes in crontab entries and validates file extensions (.sh/.bash on Unix, .ps1 on Windows)
+- **SSRF prevention** — `fetch_url` now requires HTTPS URLs and blocks private IP ranges (localhost, 10.x, 172.16-31.x, 192.168.x, link-local, IPv6 loopback)
+
+**Medium Priority Fixes:**
+- **CORS hardening** — relay server uses split routing: `/health` gets restrictive CORS, `/ws` allows WebSocket upgrades from any origin
+- **Public key removed from QR** — desktop public key no longer encoded in QR URL; exchanged securely via relay protocol only
+- **Key validation** — relay validates all public keys are valid base64 decoding to exactly 32 bytes before storing
+- **Log redaction** — relay redacts room codes in log output (shows only prefix)
+- **Room code retry limit** — code generation loop bounded to 100 attempts with proper error on exhaustion
+- **Event listener leak fix** — `connectRelay()`/`connectRemote()` unsubscribe functions now properly stored and called on disconnect
+- **Nonce overflow guard** — both desktop and mobile throw/disconnect if nonce counter reaches MAX_SAFE_INTEGER
+
+**Other Fixes:**
+- **Key material zeroing** — crypto session `destroy()` fills secret keys and shared secrets with zeros before nulling
+- **Mobile auth screen gating** — PIN entry hidden until encrypted tunnel established ("Establishing secure connection..." shown while key exchange completes)
+- **LAN expose default** — `exposeOnNetwork` now defaults to `true` so LAN mode works out of the box
+- **Better relay error messages** — cloud mode shows helpful error when relay server is unavailable
+
+---
+
 ## v0.8.1 — March 5, 2026
 
 ### New Feature: Cloud Relay — Remote Access from Anywhere (GitHub Issue #14)

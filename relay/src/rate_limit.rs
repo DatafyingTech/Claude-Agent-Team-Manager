@@ -17,6 +17,10 @@ pub struct RateLimitState {
     message_limiter:
         RateLimiter<u64, DashMapStateStore<u64>, DefaultClock>,
 
+    /// Per-IP join attempt limiter (10 per minute).
+    join_attempt_limiter:
+        RateLimiter<IpAddr, DashMapStateStore<IpAddr>, DefaultClock>,
+
     /// Global connection counter.
     global_connections: AtomicUsize,
 
@@ -45,9 +49,12 @@ impl RateLimitState {
             NonZeroU32::new(msg_rate_limit_per_sec).unwrap_or(NonZeroU32::new(100).unwrap()),
         );
 
+        let join_quota = Quota::per_minute(NonZeroU32::new(10).unwrap());
+
         Arc::new(Self {
             room_creation_limiter: RateLimiter::dashmap(room_quota),
             message_limiter: RateLimiter::dashmap(msg_quota),
+            join_attempt_limiter: RateLimiter::dashmap(join_quota),
             global_connections: AtomicUsize::new(0),
             ip_connections: DashMap::new(),
             max_connections,
@@ -66,6 +73,14 @@ impl RateLimitState {
     /// Returns `true` if the IP is allowed to create another room right now.
     pub fn check_room_creation(&self, ip: IpAddr) -> bool {
         self.room_creation_limiter.check_key(&ip).is_ok()
+    }
+
+    // ---- join attempt rate limiting ----
+
+    /// Returns `true` if the IP is allowed another join attempt right now.
+    /// Consumes a rate-limit token on each call.
+    pub fn check_join_attempt(&self, ip: IpAddr) -> bool {
+        self.join_attempt_limiter.check_key(&ip).is_ok()
     }
 
     // ---- message rate limiting ----

@@ -3,6 +3,9 @@ import { REMOTE_CONFIG_DEFAULTS, type RemoteConfig } from "@/types/remote";
 import type { RelayStatus } from "@/types/remote";
 import { remoteSync } from "@/services/remote-sync";
 
+/** Module-level storage for event listener unsubscribe functions */
+let unsubscribers: Array<() => void> = [];
+
 interface RemoteState {
   /** Remote server configuration (persisted to .aui/remote.json) */
   remoteConfig: RemoteConfig;
@@ -297,15 +300,18 @@ export const useUiStore = create<UiStore>()((set, get) => ({
 
   connectRemote() {
     // Listen for connection changes from the sync service
-    remoteSync.onConnectionChange((connected, clientCount) => {
+    const unsub = remoteSync.onConnectionChange((connected, clientCount) => {
       set({ remoteConnected: connected, remoteClientCount: clientCount });
     });
+    unsubscribers.push(unsub);
 
     // Initialize Tauri event listeners for server started/stopped events
     remoteSync.init();
   },
 
   disconnectRemote() {
+    unsubscribers.forEach((fn) => fn());
+    unsubscribers = [];
     remoteSync.dispose();
     set({ remoteConnected: false, remoteClientCount: 0 });
   },
@@ -322,7 +328,7 @@ export const useUiStore = create<UiStore>()((set, get) => ({
       throw err;
     }
 
-    remoteSync.onConnectionChange((connected, clientCount) => {
+    const unsub = remoteSync.onConnectionChange((connected, clientCount) => {
       set({
         remoteConnected: connected,
         remoteClientCount: clientCount,
@@ -333,9 +339,12 @@ export const useUiStore = create<UiStore>()((set, get) => ({
         },
       });
     });
+    unsubscribers.push(unsub);
   },
 
   disconnectRelay() {
+    unsubscribers.forEach((fn) => fn());
+    unsubscribers = [];
     remoteSync.dispose();
     set({
       remoteConnected: false,

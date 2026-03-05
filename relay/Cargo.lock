@@ -72,6 +72,7 @@ name = "atm-relay"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "dashmap",
  "env_logger",
  "governor",

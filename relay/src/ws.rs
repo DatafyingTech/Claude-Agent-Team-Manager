@@ -112,7 +112,7 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<AppState>, addr: Socket
             room_code,
             mobile_public_key,
         } => {
-            handle_mobile(socket, &state, addr, conn_id, room_code, mobile_public_key).await;
+            handle_mobile(socket, &state, ip, addr, conn_id, room_code, mobile_public_key).await;
         }
     }
 
@@ -148,8 +148,8 @@ async fn handle_desktop(
         }
     };
 
-    // Create the mpsc channel for receiving messages destined for this desktop.
-    let (desktop_tx, desktop_rx) = mpsc::unbounded_channel::<Message>();
+    // Create the bounded mpsc channel for receiving messages destined for this desktop.
+    let (desktop_tx, desktop_rx) = mpsc::channel::<Message>(128);
     state.room_manager.set_desktop_tx(&room_code, desktop_tx);
 
     // Tell the desktop which code to display.
@@ -168,8 +168,8 @@ async fn handle_desktop(
     // Cleanup: close the mobile side if still connected, then remove the room.
     if let Some(mobile_tx) = state.room_manager.get_mobile_tx(&room_code) {
         let disconnect_msg = serde_json::to_string(&ServerEvent::PeerDisconnected {}).unwrap_or_default();
-        let _ = mobile_tx.send(Message::Text(disconnect_msg.into()));
-        let _ = mobile_tx.send(Message::Close(None));
+        let _ = mobile_tx.try_send(Message::Text(disconnect_msg.into()));
+        let _ = mobile_tx.try_send(Message::Close(None));
     }
     state.room_manager.remove_room(&room_code);
     log::info!("Room {} removed (desktop disconnected)", room_code);
@@ -180,11 +180,20 @@ async fn handle_desktop(
 async fn handle_mobile(
     mut socket: WebSocket,
     state: &Arc<AppState>,
+    ip: std::net::IpAddr,
     addr: SocketAddr,
     conn_id: u64,
     room_code: String,
     mobile_public_key: String,
 ) {
+    // Rate-limit join attempts per IP.
+    if !state.rate_limit.check_join_attempt(ip) {
+        let _ = socket.send(server_msg(&ServerEvent::RelayError {
+            message: "join rate limit exceeded".to_string(),
+        })).await;
+        return;
+    }
+
     let join_result = match state.room_manager.join_room(&room_code, mobile_public_key.clone()) {
         Ok(r) => r,
         Err(e) => {
@@ -195,13 +204,13 @@ async fn handle_mobile(
         }
     };
 
-    // Create the mpsc channel for receiving messages destined for this mobile.
-    let (mobile_tx, mobile_rx) = mpsc::unbounded_channel::<Message>();
+    // Create the bounded mpsc channel for receiving messages destined for this mobile.
+    let (mobile_tx, mobile_rx) = mpsc::channel::<Message>(128);
     state.room_manager.set_mobile_tx(&room_code, mobile_tx);
 
     // Notify the desktop that the mobile has joined.
     if let Some(desktop_tx) = state.room_manager.get_desktop_tx(&room_code) {
-        let _ = desktop_tx.send(server_msg(&ServerEvent::PeerJoined {
+        let _ = desktop_tx.try_send(server_msg(&ServerEvent::PeerJoined {
             mobile_public_key,
         }));
     }
@@ -222,8 +231,8 @@ async fn handle_mobile(
     // Cleanup: close the desktop side if still connected, then remove the room.
     if let Some(desktop_tx) = state.room_manager.get_desktop_tx(&room_code) {
         let disconnect_msg = serde_json::to_string(&ServerEvent::PeerDisconnected {}).unwrap_or_default();
-        let _ = desktop_tx.send(Message::Text(disconnect_msg.into()));
-        let _ = desktop_tx.send(Message::Close(None));
+        let _ = desktop_tx.try_send(Message::Text(disconnect_msg.into()));
+        let _ = desktop_tx.try_send(Message::Close(None));
     }
     state.room_manager.remove_room(&room_code);
     log::info!("Room {} removed (mobile disconnected)", room_code);
@@ -241,7 +250,7 @@ async fn relay_loop(
     conn_id: u64,
     is_desktop: bool,
     mut socket: WebSocket,
-    mut from_peer_rx: mpsc::UnboundedReceiver<Message>,
+    mut from_peer_rx: mpsc::Receiver<Message>,
 ) {
     loop {
         tokio::select! {
@@ -275,9 +284,19 @@ async fn relay_loop(
                         };
 
                         if let Some(tx) = peer_tx {
-                            if tx.send(msg).is_err() {
-                                log::debug!("Peer channel closed in room {}", room_code);
-                                break;
+                            match tx.try_send(msg) {
+                                Ok(()) => {}
+                                Err(mpsc::error::TrySendError::Full(_)) => {
+                                    log::warn!(
+                                        "Peer channel full in room {} — disconnecting slow consumer",
+                                        room_code
+                                    );
+                                    break;
+                                }
+                                Err(mpsc::error::TrySendError::Closed(_)) => {
+                                    log::debug!("Peer channel closed in room {}", room_code);
+                                    break;
+                                }
                             }
                         }
                         // If the peer hasn't connected yet, messages are silently dropped.

@@ -36,7 +36,7 @@ export const REMOTE_CONFIG_DEFAULTS: RemoteConfig = {
   enabled: false,
   mode: "lan",
   port: 5175,
-  exposeOnNetwork: false,
+  exposeOnNetwork: true,
   tokenExpiryHours: 24,
   maxSessions: 3,
   allowEdits: true,

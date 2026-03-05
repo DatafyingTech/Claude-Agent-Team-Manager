@@ -69,10 +69,15 @@ async fn main() {
         });
     }
 
-    let app = Router::new()
-        .route("/health", get(health_handler).with_state(health_state))
+    // /health gets no CORS layer; /ws gets permissive CORS for mobile web clients.
+    let health_router = Router::new()
+        .route("/health", get(health_handler).with_state(health_state));
+
+    let ws_router = Router::new()
         .route("/ws", get(ws_upgrade).with_state(app_state))
         .layer(CorsLayer::permissive());
+
+    let app = health_router.merge(ws_router);
 
     let addr: SocketAddr = config
         .listen_addr

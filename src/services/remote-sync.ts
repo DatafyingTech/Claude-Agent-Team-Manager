@@ -95,6 +95,8 @@ export class CryptoSession {
    */
   encrypt(message: RemoteMessage): EncryptedEnvelope {
     if (!this.sharedKey) throw new Error("CryptoSession not paired");
+    if (this.sendNonce >= Number.MAX_SAFE_INTEGER)
+      throw new Error("Nonce space exhausted, reconnect required");
 
     const plaintext = new TextEncoder().encode(JSON.stringify(message));
     const nonce = this.makeNonce(this.sendNonce++);
@@ -125,6 +127,12 @@ export class CryptoSession {
     }
 
     return JSON.parse(new TextDecoder().decode(plaintext)) as RemoteMessage;
+  }
+
+  /** Zero out key material to prevent leakage after session ends. */
+  destroy(): void {
+    this.keyPair.secretKey.fill(0);
+    if (this.sharedKey) this.sharedKey.fill(0);
   }
 
   /** Build a 24-byte nonce from a counter value, prefixed by role byte */
@@ -169,6 +177,8 @@ class RemoteSyncService {
   private reconnectHandlers: Set<() => void> = new Set();
   private _connected: boolean = false;
   private _clientCount: number = 0;
+  /** Whether the mobile peer has authenticated via PIN (cloud mode only). */
+  private _authenticated: boolean = false;
   /** When true, the next state mutation was triggered by a remote command -- skip broadcasting. */
   private _remoteOrigin: boolean = false;
   /** Cleanup functions for all Tauri event listeners. */
@@ -249,6 +259,7 @@ class RemoteSyncService {
     if (!this._connected) return;
 
     if (this._mode === "cloud") {
+      if (!this._authenticated) return;
       this.broadcastViaRelay(type, payload);
     } else {
       invoke("broadcast_to_remote", {
@@ -377,28 +388,22 @@ class RemoteSyncService {
     });
 
     const u2 = await listen<{ mobile_public_key: string }>("relay:peer-joined", (event) => {
-      console.log("[RemoteSync] Peer joined relay room");
+      console.log("[RemoteSync] Peer joined relay room — awaiting PIN auth");
       if (this._crypto) {
         this._crypto.deriveSharedKey(event.payload.mobile_public_key);
       }
       this._relayStatus.clientConnected = true;
       this._clientCount = 1;
+      this._authenticated = false;
       this.notifyConnectionChange();
-
-      // Fire reconnect handlers to push full state
-      for (const handler of this.reconnectHandlers) {
-        try {
-          handler();
-        } catch (err) {
-          console.warn("[RemoteSync] Reconnect handler error:", err);
-        }
-      }
+      // Do NOT fire reconnect handlers here — wait for PIN auth
     });
 
     const u3 = await listen("relay:peer-disconnected", () => {
       console.log("[RemoteSync] Peer disconnected from relay");
       this._relayStatus.clientConnected = false;
       this._clientCount = 0;
+      this._authenticated = false;
       this.notifyConnectionChange();
     });
 
@@ -421,6 +426,15 @@ class RemoteSyncService {
 
         const msg = this._crypto.decrypt(envelope);
         if (!msg) return;
+
+        // ── PIN auth gate ──
+        if (msg.type === "auth" && !this._authenticated) {
+          this.handleAuthMessage(msg);
+          return;
+        }
+
+        // Drop all non-auth messages until authenticated
+        if (!this._authenticated) return;
 
         for (const handler of this.pushHandlers) {
           try {
@@ -449,6 +463,17 @@ class RemoteSyncService {
     } catch (err) {
       console.warn("[RemoteSync] Failed to connect to relay:", err);
       this._relayStatus.connected = false;
+      // Provide user-friendly error for common failure modes
+      const errStr = String(err);
+      if (errStr.includes("302") || errStr.includes("redirect")) {
+        throw new Error("Cloud relay server unavailable (received redirect). The relay may not be deployed yet.");
+      }
+      if (errStr.includes("404")) {
+        throw new Error("Cloud relay server not found. Check the relay URL.");
+      }
+      if (errStr.includes("503") || errStr.includes("502")) {
+        throw new Error("Cloud relay server is temporarily unavailable. Try again later.");
+      }
       throw err;
     }
 
@@ -465,6 +490,7 @@ class RemoteSyncService {
     settings: unknown,
   ): Promise<void> {
     if (this._mode === "cloud") {
+      if (!this._authenticated) return;
       // In cloud mode, send full_sync via encrypted relay
       const remoteNodes: RedactedRemoteNode[] = [];
       for (const node of nodes.values()) {
@@ -497,16 +523,17 @@ class RemoteSyncService {
 
     this._connected = false;
     this._clientCount = 0;
-    this._crypto = null;
+    this._authenticated = false;
+    if (this._crypto) {
+      this._crypto.destroy();
+      this._crypto = null;
+    }
     this._relayStatus = {
       connected: false,
       roomCode: null,
       clientConnected: false,
       publicKey: null,
     };
-    this.pushHandlers.clear();
-    this.connectionHandlers.clear();
-    this.reconnectHandlers.clear();
     for (const unlisten of this._unlisteners) {
       unlisten();
     }
@@ -514,6 +541,57 @@ class RemoteSyncService {
   }
 
   // ── Private ──────────────────────────────────────
+
+  /**
+   * Handle an incoming auth message from the mobile peer.
+   * Verifies the PIN and, on success, fires reconnect handlers to push full state.
+   */
+  private async handleAuthMessage(msg: RemoteMessage): Promise<void> {
+    if (!this._crypto?.isPaired) return;
+
+    try {
+      const desktopPin = await invoke<string>("get_remote_pin");
+      const submittedPin = (msg.payload as { pin?: string })?.pin;
+
+      if (typeof submittedPin === "string" && submittedPin === desktopPin) {
+        this._authenticated = true;
+        console.log("[RemoteSync] PIN auth succeeded");
+
+        // Send auth_ok response
+        const okMsg: RemoteMessage = {
+          type: "auth_ok" as ServerEventType,
+          id: crypto.randomUUID(),
+          payload: {},
+          timestamp: Date.now(),
+        };
+        const envelope = this._crypto.encrypt(okMsg);
+        await invoke("send_to_relay", { data: JSON.stringify(envelope) });
+
+        // Now push full state via reconnect handlers
+        for (const handler of this.reconnectHandlers) {
+          try {
+            handler();
+          } catch (err) {
+            console.warn("[RemoteSync] Reconnect handler error:", err);
+          }
+        }
+      } else {
+        console.warn("[RemoteSync] PIN auth failed — incorrect PIN");
+
+        // Send auth_fail response
+        const failMsg: RemoteMessage = {
+          type: "auth_fail" as ServerEventType,
+          id: crypto.randomUUID(),
+          payload: {},
+          timestamp: Date.now(),
+        };
+        const envelope = this._crypto.encrypt(failMsg);
+        await invoke("send_to_relay", { data: JSON.stringify(envelope) });
+      }
+    } catch (err) {
+      console.warn("[RemoteSync] Auth handling error:", err);
+    }
+  }
 
   private notifyConnectionChange(): void {
     for (const handler of this.connectionHandlers) {

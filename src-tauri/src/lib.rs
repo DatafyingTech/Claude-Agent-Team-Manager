@@ -20,6 +20,34 @@ fn create_scheduled_task(
     start_date: String,
     repeat: String,
 ) -> Result<String, String> {
+    // Reject null bytes in script_path (all platforms)
+    if script_path.contains('\0') {
+        return Err("script_path contains null bytes".to_string());
+    }
+
+    // Validate file extension
+    #[cfg(target_os = "windows")]
+    {
+        if !script_path.to_lowercase().ends_with(".ps1") {
+            return Err("script_path must end with .ps1 on Windows".to_string());
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let lower = script_path.to_lowercase();
+        if !lower.ends_with(".sh") && !lower.ends_with(".bash") {
+            return Err("script_path must end with .sh or .bash on Unix".to_string());
+        }
+    }
+
+    // Platform-specific dangerous character validation
+    #[cfg(target_os = "windows")]
+    {
+        if script_path.contains('&') || script_path.contains('|') || script_path.contains('`') {
+            return Err("script_path contains dangerous characters".to_string());
+        }
+    }
+
     #[cfg(target_os = "windows")]
     {
         let tn = format!("AUI\\{}", task_name);
@@ -100,9 +128,13 @@ fn create_scheduled_task(
             }
         };
 
+        // Escape single quotes to prevent shell injection in crontab entry
+        let safe_path = script_path.replace("'", "'\\''");
+        let safe_name = task_name.replace("'", "'\\''");
+
         let entry = format!(
             "{} /bin/bash '{}' # AUI:{}\n",
-            cron_line, script_path, task_name
+            cron_line, safe_path, safe_name
         );
 
         let existing = StdCommand::new("crontab")
@@ -278,8 +310,37 @@ fn open_terminal(script_path: String) -> Result<(), String> {
 /// Fetches a URL and returns its body as a string.
 #[tauri::command]
 fn fetch_url(url: String) -> Result<String, String> {
+    // Validate URL scheme: only allow HTTPS
+    if !url.starts_with("https://") {
+        return Err("Only https:// URLs are allowed".to_string());
+    }
+
+    // Block private/internal IP ranges to prevent SSRF
+    let url_lower = url.to_lowercase();
+    let private_patterns = [
+        "localhost",
+        "127.",
+        "10.",
+        "172.16.", "172.17.", "172.18.", "172.19.",
+        "172.20.", "172.21.", "172.22.", "172.23.",
+        "172.24.", "172.25.", "172.26.", "172.27.",
+        "172.28.", "172.29.", "172.30.", "172.31.",
+        "192.168.",
+        "169.254.",
+        "0.0.0.0",
+        "[::1]",
+        "::1",
+    ];
+    // Extract the host portion (after "https://") for checking
+    let after_scheme = &url_lower["https://".len()..];
+    for pattern in &private_patterns {
+        if after_scheme.starts_with(pattern) {
+            return Err(format!("Access to private/internal addresses is blocked: {}", pattern));
+        }
+    }
+
     let output = StdCommand::new("curl")
-        .args(&["-sL", "--max-time", "15", &url])
+        .args(&["-sL", "--max-time", "15", "--max-filesize", "10485760", &url])
         .output()
         .map_err(|e| format!("Failed to run curl: {}", e))?;
 

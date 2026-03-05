@@ -566,8 +566,8 @@ function RemoteAccessSection() {
         await connectRelay(remoteConfig.relayUrl);
         // Generate QR code with relay info — read fresh state after await
         const status = useUiStore.getState().relayStatus;
-        if (status.roomCode && status.publicKey) {
-          const qrContent = `https://atm.datafying.com?code=${status.roomCode}&key=${encodeURIComponent(status.publicKey)}&relay=${encodeURIComponent(remoteConfig.relayUrl)}`;
+        if (status.roomCode) {
+          const qrContent = `https://atm.datafying.com?code=${status.roomCode}&relay=${encodeURIComponent(remoteConfig.relayUrl)}`;
           try {
             const qrDataUri = await invoke<string>("generate_qr_code", { url: qrContent });
             setRemoteInfo({
@@ -588,7 +588,8 @@ function RemoteAccessSection() {
       }
     } catch (err) {
       console.warn("[Settings] Cloud relay error:", err);
-      toast(err instanceof Error ? err.message : String(err), "error");
+      const msg = err instanceof Error ? err.message : String(err);
+      toast(msg || "Could not connect to relay server. The server may be unavailable.", "error");
       setRemoteConfig({ enabled: false });
     }
     await saveRemoteConfig();

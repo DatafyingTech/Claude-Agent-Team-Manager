@@ -94,6 +94,10 @@ function deriveSharedKey(peerPublicKeyBase64) {
 
 function encryptMessage(msg) {
   if (!state.sharedKey) return JSON.stringify(msg);
+  if (state.sendNonce >= Number.MAX_SAFE_INTEGER) {
+    showToast('Session expired, please reconnect', 'error');
+    return null;
+  }
   const plaintext = new TextEncoder().encode(JSON.stringify(msg));
   const nonce = makeNonce(state.sendNonce++);
   const ciphertext = nacl.secretbox(plaintext, nonce, state.sharedKey);
@@ -376,7 +380,9 @@ function sendMessage(type, payload) {
     };
 
     if (state.relayMode && state.sharedKey) {
-      state.ws.send(encryptMessage(msg));
+      const encrypted = encryptMessage(msg);
+      if (encrypted === null) return;
+      state.ws.send(encrypted);
     } else {
       state.ws.send(JSON.stringify(msg));
     }
@@ -559,6 +565,21 @@ function renderAuth() {
     `;
   }
 
+  // In relay mode, block PIN entry until encrypted tunnel is established
+  if (state.relayMode && !state.sharedKey) {
+    return `
+      <div class="auth-screen">
+        <div class="auth-logo">ATM</div>
+        <h1 class="auth-title">ATM Remote</h1>
+        <p class="auth-subtitle">Establishing secure connection...</p>
+        <div style="display:flex;justify-content:center;padding:32px 0">
+          <span class="auth-loading"></span>
+        </div>
+        ${state.authError ? `<div class="auth-error">${esc(state.authError)}</div>` : ''}
+      </div>
+    `;
+  }
+
   return `
     <div class="auth-screen">
       <div class="auth-logo">ATM</div>
@@ -626,6 +647,13 @@ function handleConnectRelay() {
   state.relayMode = true;
   state.roomCode = code;
   state.relayUrl = state.relayUrl || 'wss://atm-relay.datafying.com';
+
+  if (!state.relayUrl.startsWith('wss://')) {
+    state.authError = 'Invalid relay URL: only secure (wss://) connections are allowed';
+    render();
+    return;
+  }
+
   state.authError = null;
 
   connectWebSocket();
@@ -1445,6 +1473,9 @@ function handleDisconnect() {
   state.relayMode = false;
   state.roomCode = null;
   state.relayUrl = null;
+  // Zero key material before releasing references
+  if (state.keyPair && state.keyPair.secretKey) state.keyPair.secretKey.fill(0);
+  if (state.sharedKey) state.sharedKey.fill(0);
   state.keyPair = null;
   state.sharedKey = null;
   state.peerPublicKey = null;
@@ -1472,9 +1503,16 @@ function init() {
 
   if (relayCode) {
     // QR code scanned - go directly to connecting
+    const resolvedRelayUrl = relayUrlParam || 'wss://atm-relay.datafying.com';
+    if (!resolvedRelayUrl.startsWith('wss://')) {
+      state.screen = 'connect';
+      state.authError = 'Invalid relay URL: only secure (wss://) connections are allowed';
+      render();
+      return;
+    }
     state.relayMode = true;
     state.roomCode = relayCode;
-    state.relayUrl = relayUrlParam || 'wss://atm-relay.datafying.com';
+    state.relayUrl = resolvedRelayUrl;
     state.peerPublicKey = relayKey;
     state.screen = 'auth'; // Will switch after crypto handshake
     render();
