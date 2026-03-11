@@ -3,6 +3,7 @@ import { readTextFile, writeTextFile, readFile, writeFile, exists, mkdir } from 
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import { useUiStore } from "@/store/ui-store";
 import { useTreeStore } from "@/store/tree-store";
 import { join } from "@/utils/paths";
@@ -57,6 +58,33 @@ const sectionStyle: CSSProperties = {
   marginBottom: 12,
   fontWeight: 600,
 };
+
+/**
+ * Persist the chosen project path to ~/.aui/settings.json so it survives restarts.
+ * Pass null to clear the saved path (reset to home).
+ */
+async function saveProjectPath(path: string | null) {
+  const home = await homeDir();
+  const auiDir = join(home, ".aui");
+  if (!(await exists(auiDir))) {
+    await mkdir(auiDir, { recursive: true });
+  }
+  const settingsPath = join(auiDir, "settings.json");
+  let current: Record<string, unknown> = {};
+  try {
+    if (await exists(settingsPath)) {
+      current = JSON.parse(await readTextFile(settingsPath));
+    }
+  } catch {
+    // Start fresh
+  }
+  if (path) {
+    current.projectPath = path;
+  } else {
+    delete current.projectPath;
+  }
+  await writeTextFile(settingsPath, JSON.stringify(current, null, 2));
+}
 
 export function SettingsPanel() {
   const settingsOpen = useUiStore((s) => s.settingsOpen);
@@ -190,6 +218,83 @@ export function SettingsPanel() {
               <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
                 {`ATM v${version}`}
               </span>
+            </div>
+
+            {/* Project Folder */}
+            <div style={sectionStyle}>Project Folder</div>
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  ...inputStyle,
+                  fontSize: 12,
+                  fontFamily: "monospace",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  marginBottom: 8,
+                }}
+                title={projectPath ?? ""}
+              >
+                {projectPath ?? "Not set"}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={async () => {
+                    try {
+                      const selected = await open({ directory: true, multiple: false });
+                      if (!selected || typeof selected !== "string") return;
+                      await saveProjectPath(selected);
+                      await useTreeStore.getState().loadProject(selected);
+                      useTreeStore.getState().autoGroupByPrefix();
+                      toast("Project folder changed", "success");
+                    } catch (err) {
+                      toast(err instanceof Error ? err.message : "Failed to change folder", "error");
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    background: "transparent",
+                    color: "var(--accent-blue, #4a9eff)",
+                    border: "1px solid var(--accent-blue, #4a9eff)",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Browse
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const home = await homeDir();
+                      await saveProjectPath(null);
+                      await useTreeStore.getState().loadProject(home);
+                      useTreeStore.getState().autoGroupByPrefix();
+                      toast("Reset to home directory", "success");
+                    } catch (err) {
+                      toast(err instanceof Error ? err.message : "Failed to reset", "error");
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    background: "transparent",
+                    color: "var(--text-secondary)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Reset to Home
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                Agents and skills are loaded from this folder's .claude/ directory
+              </div>
             </div>
 
             {/* API Key */}
@@ -513,7 +618,10 @@ function RemoteAccessSection() {
   const disconnectRemote = useUiStore((s) => s.disconnectRemote);
   const relayStatus = useUiStore((s) => s.relayStatus);
   const connectRelay = useUiStore((s) => s.connectRelay);
+  const connectRelayPersistent = useUiStore((s) => s.connectRelayPersistent);
   const disconnectRelay = useUiStore((s) => s.disconnectRelay);
+  const loadPairedDevices = useUiStore((s) => s.loadPairedDevices);
+  const revokePairingFn = useUiStore((s) => s.revokePairing);
   const projectPath = useTreeStore((s) => s.projectPath);
 
   const saveRemoteConfig = useCallback(async () => {
@@ -565,11 +673,15 @@ function RemoteAccessSection() {
     setRemoteConfig({ enabled });
     try {
       if (enabled) {
+        // Use persistent mode — registers desktop, no room code needed for paired devices
+        await connectRelayPersistent(remoteConfig.relayUrl);
+
+        // Also create an ephemeral room for initial pairing of new devices
         await connectRelay(remoteConfig.relayUrl);
+
         // Generate QR code with relay info — read fresh state after await
         const status = useUiStore.getState().relayStatus;
         if (status.roomCode) {
-          // Serve mobile client from the relay domain itself (Caddy serves static files at root)
           const relayHttps = remoteConfig.relayUrl.replace("wss://", "https://");
           const qrContent = `${relayHttps}?code=${status.roomCode}`;
           try {
@@ -585,6 +697,9 @@ function RemoteAccessSection() {
           } catch { /* QR optional */ }
         }
         setServerRunning(true);
+
+        // Load paired devices
+        loadPairedDevices().catch(() => {});
       } else {
         disconnectRelay();
         setRemoteInfo(null);
@@ -862,6 +977,72 @@ function RemoteAccessSection() {
                 Enable to allow connections from other devices on your LAN.
               </div>
             </>
+          )}
+
+          {/* ── Paired Devices (cloud mode) ── */}
+          {remoteConfig.mode === "cloud" && relayStatus.pairedDevices.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ ...labelStyle, marginBottom: 8 }}>Paired Devices</div>
+              {relayStatus.pairedDevices.map((device) => (
+                <div
+                  key={device.pairingId}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 10px",
+                    background: "rgba(74,158,255,0.06)",
+                    border: "1px solid var(--border-color)",
+                    borderRadius: 6,
+                    marginBottom: 6,
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>
+                      {device.deviceName || "Mobile Device"}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-secondary)" }}>
+                      Last used: {new Date(device.lastUsed).toLocaleDateString()} &middot; Expires: {new Date(device.expiresAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => revokePairingFn(device.pairingId)}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid rgba(248,81,73,0.3)",
+                      color: "#f85149",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      padding: "3px 8px",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Revoke
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {remoteConfig.mode === "cloud" && relayStatus.persistentMode && relayStatus.pairedDevices.length === 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 10px",
+                background: "rgba(74,158,255,0.06)",
+                border: "1px solid var(--border-color)",
+                borderRadius: 6,
+                marginBottom: 12,
+                fontSize: 11,
+                color: "var(--text-secondary)",
+              }}
+            >
+              No paired devices yet. Connect a phone using the room code above to pair it.
+            </div>
           )}
 
           {/* ── Advanced section (cloud mode) ── */}

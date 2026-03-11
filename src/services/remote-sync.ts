@@ -9,6 +9,8 @@ import type {
   ServerEventType,
   EncryptedEnvelope,
   RelayStatus,
+  PairedDevice,
+  PairingToken,
 } from "@/types/remote";
 import { redactNode } from "@/types/remote";
 
@@ -196,6 +198,9 @@ class RemoteSyncService {
     roomCode: null,
     clientConnected: false,
     publicKey: null,
+    persistentMode: false,
+    desktopDeviceId: null,
+    pairedDevices: [],
   };
 
   get connected(): boolean {
@@ -376,6 +381,9 @@ class RemoteSyncService {
       roomCode: null,
       clientConnected: false,
       publicKey: this._crypto.publicKeyBase64,
+      persistentMode: false,
+      desktopDeviceId: null,
+      pairedDevices: [],
     };
 
     // Listen for relay events from Rust backend
@@ -481,6 +489,211 @@ class RemoteSyncService {
   }
 
   /**
+   * Initialize persistent relay mode: register desktop with relay for
+   * persistent pairing (no room code needed). Paired mobiles reconnect
+   * automatically using saved tokens.
+   */
+  async initRelayPersistent(relayUrl: string): Promise<RelayStatus> {
+    if (this._unlisteners.length > 0) this.dispose();
+    this._mode = "cloud";
+
+    // Create or load long-term crypto session
+    this._crypto = new CryptoSession();
+    const publicKey = this._crypto.publicKeyBase64;
+
+    // Derive desktop device ID as SHA-256 of public key
+    const keyBytes = decodeBase64(publicKey);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", keyBytes.buffer as ArrayBuffer);
+    const hashArray = new Uint8Array(hashBuffer);
+    const desktopDeviceId = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    this._relayStatus = {
+      connected: false,
+      roomCode: null,
+      clientConnected: false,
+      publicKey,
+      persistentMode: true,
+      desktopDeviceId,
+      pairedDevices: [],
+    };
+
+    // Listen for relay events from Rust backend
+    const u1 = await listen("relay:registered", () => {
+      console.log("[RemoteSync] Desktop registered with relay for persistent pairing");
+      this._relayStatus.connected = true;
+      this._connected = true;
+      this.notifyConnectionChange();
+    });
+
+    const u2 = await listen<{ mobile_public_key: string; pairing_id?: string }>("relay:peer-joined", (event) => {
+      console.log("[RemoteSync] Peer joined via pairing");
+      if (this._crypto) {
+        this._crypto.deriveSharedKey(event.payload.mobile_public_key);
+      }
+      this._relayStatus.clientConnected = true;
+      this._clientCount = 1;
+      // In persistent mode, paired mobiles are pre-authenticated
+      if (this._relayStatus.persistentMode && event.payload.pairing_id) {
+        this._authenticated = true;
+        // Fire reconnect handlers to push full state
+        for (const handler of this.reconnectHandlers) {
+          try { handler(); } catch (err) {
+            console.warn("[RemoteSync] Reconnect handler error:", err);
+          }
+        }
+      } else {
+        this._authenticated = false;
+      }
+      this.notifyConnectionChange();
+    });
+
+    const u3 = await listen("relay:peer-disconnected", () => {
+      console.log("[RemoteSync] Peer disconnected from relay");
+      this._relayStatus.clientConnected = false;
+      this._clientCount = 0;
+      this._authenticated = false;
+      this.notifyConnectionChange();
+    });
+
+    const u4 = await listen("relay:disconnected", () => {
+      console.log("[RemoteSync] Disconnected from relay");
+      this._connected = false;
+      this._relayStatus.connected = false;
+      this._relayStatus.clientConnected = false;
+      this._clientCount = 0;
+      this.notifyConnectionChange();
+    });
+
+    // Handle encrypted messages from mobile via relay
+    const u5 = await listen<{ data: string }>("relay:message", (event) => {
+      if (!this._crypto?.isPaired) return;
+
+      try {
+        const envelope = JSON.parse(event.payload.data) as EncryptedEnvelope;
+        if (envelope.type !== "encrypted") return;
+
+        const msg = this._crypto.decrypt(envelope);
+        if (!msg) return;
+
+        // PIN auth gate (for initial pairing flow via room code)
+        if (msg.type === "auth" && !this._authenticated) {
+          this.handleAuthMessage(msg);
+          return;
+        }
+
+        if (!this._authenticated) return;
+
+        for (const handler of this.pushHandlers) {
+          try { handler(msg); } catch (err) {
+            console.warn("[RemoteSync] Push handler error:", err);
+          }
+        }
+      } catch (err) {
+        console.warn("[RemoteSync] Failed to process relay message:", err);
+      }
+    });
+
+    this._unlisteners.push(u1, u2, u3, u4, u5);
+
+    // Register desktop with relay
+    try {
+      await invoke("register_desktop_relay", {
+        relayUrl,
+        desktopDeviceId,
+        publicKey,
+      });
+      this._relayStatus.connected = true;
+      this._connected = true;
+      this.notifyConnectionChange();
+    } catch (err) {
+      console.warn("[RemoteSync] Failed to register with relay:", err);
+      this._relayStatus.connected = false;
+      throw err;
+    }
+
+    return { ...this._relayStatus };
+  }
+
+  /**
+   * Issue a pairing token to the currently connected mobile peer.
+   * Called after successful PIN authentication.
+   * Returns the token info for display/confirmation.
+   */
+  async issuePairingToken(deviceName: string = "Mobile Device"): Promise<PairingToken | null> {
+    if (!this._crypto?.isPaired || !this._relayStatus.desktopDeviceId) return null;
+
+    try {
+      const result = await invoke<{
+        token: string;
+        pairing_id: string;
+        expires_at: number;
+      }>("issue_pairing_token", {
+        desktopDeviceId: this._relayStatus.desktopDeviceId,
+        desktopPublicKey: this._relayStatus.publicKey,
+        deviceName,
+      });
+
+      // Send the pairing token to mobile over the encrypted channel
+      const pairingMsg: RemoteMessage = {
+        type: "pairing_issued" as ServerEventType,
+        id: crypto.randomUUID(),
+        payload: {
+          pairing_token: result.token,
+          desktop_device_id: this._relayStatus.desktopDeviceId,
+          desktop_name: "ATM Desktop",
+          expires_at: result.expires_at,
+        },
+        timestamp: Date.now(),
+      };
+      const envelope = this._crypto.encrypt(pairingMsg);
+      await invoke("send_to_relay", { data: JSON.stringify(envelope) });
+
+      return {
+        token: result.token,
+        desktopDeviceId: this._relayStatus.desktopDeviceId,
+        desktopName: "ATM Desktop",
+        expiresAt: result.expires_at,
+      };
+    } catch (err) {
+      console.warn("[RemoteSync] Failed to issue pairing token:", err);
+      return null;
+    }
+  }
+
+  /**
+   * List paired devices from the relay.
+   */
+  async listPairedDevices(): Promise<PairedDevice[]> {
+    if (!this._relayStatus.desktopDeviceId) return [];
+    try {
+      const devices = await invoke<PairedDevice[]>("list_paired_devices", {
+        desktopDeviceId: this._relayStatus.desktopDeviceId,
+      });
+      this._relayStatus.pairedDevices = devices;
+      return devices;
+    } catch (err) {
+      console.warn("[RemoteSync] Failed to list paired devices:", err);
+      return [];
+    }
+  }
+
+  /**
+   * Revoke a specific paired device.
+   */
+  async revokePairing(pairingId: string): Promise<boolean> {
+    try {
+      await invoke("revoke_pairing", { pairingId });
+      this._relayStatus.pairedDevices = this._relayStatus.pairedDevices.filter(
+        d => d.pairingId !== pairingId
+      );
+      return true;
+    } catch (err) {
+      console.warn("[RemoteSync] Failed to revoke pairing:", err);
+      return false;
+    }
+  }
+
+  /**
    * Push the full app state to the Rust shared state so the REST API
    * and new WebSocket clients can access it.
    */
@@ -501,12 +714,12 @@ class RemoteSyncService {
     }
 
     // LAN mode: push to Rust shared state
-    const nodesObj: Record<string, RedactedRemoteNode> = {};
-    for (const [id, node] of nodes) {
-      nodesObj[id] = nodeToRemote(node);
+    const remoteNodes: RedactedRemoteNode[] = [];
+    for (const node of nodes.values()) {
+      remoteNodes.push(nodeToRemote(node));
     }
     await invoke("sync_state_to_remote", {
-      nodes: nodesObj,
+      nodes: remoteNodes,
       layouts: layouts ?? null,
       settings: settings ?? null,
     }).catch((err) => {
@@ -518,7 +731,11 @@ class RemoteSyncService {
   dispose(): void {
     // If in cloud mode, disconnect from relay
     if (this._mode === "cloud") {
-      invoke("disconnect_from_relay").catch(() => {});
+      if (this._relayStatus.persistentMode) {
+        invoke("disconnect_desktop_relay").catch(() => {});
+      } else {
+        invoke("disconnect_from_relay").catch(() => {});
+      }
     }
 
     this._connected = false;
@@ -533,6 +750,9 @@ class RemoteSyncService {
       roomCode: null,
       clientConnected: false,
       publicKey: null,
+      persistentMode: false,
+      desktopDeviceId: null,
+      pairedDevices: [],
     };
     for (const unlisten of this._unlisteners) {
       unlisten();
@@ -566,6 +786,16 @@ class RemoteSyncService {
         };
         const envelope = this._crypto.encrypt(okMsg);
         await invoke("send_to_relay", { data: JSON.stringify(envelope) });
+
+        // Auto-issue pairing token for persistent reconnection
+        if (this._relayStatus.persistentMode || this._relayStatus.desktopDeviceId) {
+          try {
+            await this.issuePairingToken("Mobile Device");
+            console.log("[RemoteSync] Pairing token issued to mobile");
+          } catch (err) {
+            console.warn("[RemoteSync] Failed to auto-issue pairing token:", err);
+          }
+        }
 
         // Now push full state via reconnect handlers
         for (const handler of this.reconnectHandlers) {

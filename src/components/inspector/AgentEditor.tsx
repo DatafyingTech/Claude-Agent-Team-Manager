@@ -200,14 +200,39 @@ export function AgentEditor({ node }: AgentEditorProps) {
       }
       const result = await generateText(apiKey, `This is a Claude Code agent named "${name}". Write a concise 1-2 sentence description for what this agent does based on its name. Be specific. Only output the description text, nothing else.`);
       if (result.trim()) {
-        setDescription(result.trim());
+        const generated = result.trim();
+        setDescription(generated);
         toast("Description generated", "success");
+        // Immediately persist the generated description (don't rely on autosave debounce)
+        const updatedConfig: AgentConfig = {
+          name,
+          ...(generated ? { description: generated } : {}),
+          ...(model ? { model } : {}),
+          ...(permissionMode
+            ? { permissionMode: permissionMode as AgentConfig["permissionMode"] }
+            : {}),
+          ...(maxTurns ? { maxTurns } : {}),
+          ...(tools.length ? { tools } : {}),
+          ...(disallowedTools.length ? { disallowedTools } : {}),
+          ...(skills.length ? { skills } : {}),
+          ...(color ? { color } : {}),
+          ...(cfg.hooks ? { hooks: cfg.hooks } : {}),
+          ...(cfg.allowedCommands?.length ? { allowedCommands: cfg.allowedCommands } : {}),
+        };
+        updateNode(node.id, {
+          name,
+          config: updatedConfig,
+          promptBody,
+          variables: variables.filter((v) => v.name.trim()),
+          lastModified: Date.now(),
+        });
+        saveNode(node.id);
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : "Generation failed", "error");
     }
     setGenerating(false);
-  }, [projectPath, name]);
+  }, [projectPath, name, model, permissionMode, maxTurns, tools, disallowedTools, skills, color, cfg.hooks, cfg.allowedCommands, node.id, promptBody, variables, updateNode, saveNode]);
 
   // Re-init when node changes
   useEffect(() => {

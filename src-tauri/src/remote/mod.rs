@@ -7,6 +7,6 @@ pub mod state;
 pub mod ws;
 
 pub use qr::generate_qr_data_uri;
-pub use relay_client::RelayClient;
+pub use relay_client::{RelayClient, PersistentRelayClient, PairedDeviceInfo};
 pub use server::{ServerConfig, ServerHandle, start_server};
 pub use state::{AppState, RemoteConfig, WsMessage};

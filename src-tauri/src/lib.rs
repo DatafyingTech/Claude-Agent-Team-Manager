@@ -1,6 +1,6 @@
 mod remote;
 
-use remote::{RelayClient, ServerHandle};
+use remote::{RelayClient, PersistentRelayClient, PairedDeviceInfo, ServerHandle};
 use std::process::Command as StdCommand;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
@@ -661,8 +661,18 @@ async fn get_relay_status(app: tauri::AppHandle) -> Result<serde_json::Value, St
 }
 
 /// Send an encrypted message to the relay (forwarded to mobile peer).
+/// Checks persistent relay client first, then falls back to ephemeral.
 #[tauri::command]
 async fn send_to_relay(app: tauri::AppHandle, data: String) -> Result<(), String> {
+    // Try persistent client first
+    if let Some(state) = app.try_state::<tokio::sync::Mutex<Option<PersistentRelayClient>>>() {
+        let guard = state.lock().await;
+        if let Some(client) = guard.as_ref() {
+            return client.send(&data);
+        }
+    }
+
+    // Fall back to ephemeral client
     let state = app
         .try_state::<tokio::sync::Mutex<Option<RelayClient>>>()
         .ok_or("Relay not initialized")?;
@@ -672,6 +682,126 @@ async fn send_to_relay(app: tauri::AppHandle, data: String) -> Result<(), String
         Some(client) => client.send(&data),
         None => Err("Not connected to relay".to_string()),
     }
+}
+
+// ─── Persistent Relay (Pairing) Commands ────────────────────────────
+
+/// Register desktop with relay for persistent pairing.
+#[tauri::command]
+async fn register_desktop_relay(
+    app: tauri::AppHandle,
+    relay_url: String,
+    desktop_device_id: String,
+    public_key: String,
+) -> Result<(), String> {
+    // Check if already registered
+    if let Some(state) = app.try_state::<tokio::sync::Mutex<Option<PersistentRelayClient>>>() {
+        let guard = state.lock().await;
+        if guard.is_some() {
+            return Err("Already registered with relay".to_string());
+        }
+    }
+
+    let client = PersistentRelayClient::connect(
+        &relay_url,
+        &desktop_device_id,
+        &public_key,
+        app.clone(),
+    )
+    .await?;
+
+    {
+        let state = app
+            .try_state::<tokio::sync::Mutex<Option<PersistentRelayClient>>>()
+            .ok_or("Persistent relay state not initialized")?;
+        let mut guard = state.lock().await;
+        *guard = Some(client);
+    }
+
+    Ok(())
+}
+
+/// Disconnect from persistent relay.
+#[tauri::command]
+async fn disconnect_desktop_relay(app: tauri::AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<tokio::sync::Mutex<Option<PersistentRelayClient>>>()
+        .ok_or("Persistent relay not initialized")?;
+
+    let mut guard = state.lock().await;
+    if let Some(client) = guard.take() {
+        client.disconnect();
+    }
+
+    let _ = app.emit("relay:disconnected", serde_json::json!({}));
+    Ok(())
+}
+
+/// Issue a pairing token to the currently connected mobile peer.
+/// Returns { token, pairing_id, expires_at }.
+#[tauri::command]
+async fn issue_pairing_token(
+    app: tauri::AppHandle,
+    desktop_device_id: String,
+    desktop_public_key: String,
+    device_name: String,
+) -> Result<serde_json::Value, String> {
+    let state = app
+        .try_state::<tokio::sync::Mutex<Option<PersistentRelayClient>>>()
+        .ok_or("Persistent relay not initialized")?;
+
+    let guard = state.lock().await;
+    let client = guard.as_ref().ok_or("Not registered with relay")?;
+
+    if client.desktop_device_id != desktop_device_id {
+        return Err("Desktop device ID mismatch".to_string());
+    }
+
+    let (token, pairing_id, expires_at) = client
+        .issue_pairing_token(&desktop_public_key, &device_name)
+        .await?;
+
+    Ok(serde_json::json!({
+        "token": token,
+        "pairing_id": pairing_id,
+        "expires_at": expires_at,
+    }))
+}
+
+/// List locally tracked paired devices.
+#[tauri::command]
+async fn list_paired_devices(
+    app: tauri::AppHandle,
+    desktop_device_id: String,
+) -> Result<Vec<PairedDeviceInfo>, String> {
+    let state = app
+        .try_state::<tokio::sync::Mutex<Option<PersistentRelayClient>>>()
+        .ok_or("Persistent relay not initialized")?;
+
+    let guard = state.lock().await;
+    let client = guard.as_ref().ok_or("Not registered with relay")?;
+
+    if client.desktop_device_id != desktop_device_id {
+        return Err("Desktop device ID mismatch".to_string());
+    }
+
+    Ok(client.list_paired_devices().await)
+}
+
+/// Revoke a specific pairing.
+#[tauri::command]
+async fn revoke_pairing(
+    app: tauri::AppHandle,
+    pairing_id: String,
+) -> Result<(), String> {
+    let state = app
+        .try_state::<tokio::sync::Mutex<Option<PersistentRelayClient>>>()
+        .ok_or("Persistent relay not initialized")?;
+
+    let guard = state.lock().await;
+    let client = guard.as_ref().ok_or("Not registered with relay")?;
+
+    client.revoke_pairing(&pairing_id)
 }
 
 // ─── App Entry Point ────────────────────────────────────────────────
@@ -703,6 +833,12 @@ pub fn run() {
             disconnect_from_relay,
             get_relay_status,
             send_to_relay,
+            // Persistent pairing commands.
+            register_desktop_relay,
+            disconnect_desktop_relay,
+            issue_pairing_token,
+            list_paired_devices,
+            revoke_pairing,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -718,6 +854,9 @@ pub fn run() {
 
             // Initialize the relay client slot (relay is OFF by default).
             app.manage(tokio::sync::Mutex::new(None::<RelayClient>));
+
+            // Initialize the persistent relay client slot.
+            app.manage(tokio::sync::Mutex::new(None::<PersistentRelayClient>));
 
             Ok(())
         })

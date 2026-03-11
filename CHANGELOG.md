@@ -1,5 +1,45 @@
 # ATM (Agent Team Manager) — Changelog
 
+## v0.8.5 — March 5, 2026
+
+### Persistent Mobile Pairing & PWA
+
+**Persistent Device Pairing:**
+- **Pair once, connect forever** — after initial room-code + PIN pairing, desktop issues a 256-bit pairing token (valid 90 days) that mobile stores in IndexedDB. Subsequent connections are fully automatic — no room code needed
+- **Relay server pairing registry** — SQLite-backed pairing storage on the relay server with SHA-256 token hashing, expiry tracking, and automatic cleanup of expired records
+- **Desktop auto-registration** — desktop registers with relay on cloud mode enable (`register_desktop` protocol), allowing paired mobiles to find it without ephemeral rooms
+- **Waiting room pattern** — if mobile reconnects while desktop is offline, relay holds the connection and sends `peer_offline` / `peer_online` notifications with automatic bridging when desktop comes back
+- **Pairing management UI** — Settings panel shows paired devices with name, last used date, expiry, and revoke button
+- **Revoke pairing** — desktop can revoke individual or all pairings; mobile is immediately disconnected and token invalidated
+
+**Mobile PWA Enhancements:**
+- **Saved pairing screen** — when a pairing token exists, mobile shows "Connecting to [Desktop Name]..." with auto-reconnect instead of room code input
+- **PWA installable** — service worker caches app shell (HTML, CSS, JS, icons) for offline startup; manifest enables "Add to Home Screen"
+- **Settings screen** — mobile shows paired desktop name, connection status, pairing expiry, and "Unpair" button
+- **Auto-reconnect** — on app open, automatically connects to relay using saved pairing token
+- **Offline UI** — installed PWA opens without network, shows cached UI with "connecting..." status
+
+**Relay Server Protocol Extensions:**
+- `register_desktop` — desktop registers for persistent connections (keyed by device ID)
+- `reconnect_paired` — mobile reconnects using pairing token (relay validates SHA-256 hash)
+- `register_pairing` / `pairing_registered` — desktop registers new pairing with relay
+- `revoke_pairing` / `pairing_revoked` — desktop revokes a specific pairing
+- `peer_offline` / `peer_online` — relay signals desktop availability to waiting mobiles
+- Desktop-to-mobile message forwarding in persistent mode
+
+**Desktop Tauri Commands:**
+- `register_desktop_relay` — register desktop with relay for persistent pairing
+- `disconnect_desktop_relay` — disconnect persistent relay connection
+- `issue_pairing_token` — generate 256-bit token, register SHA-256 hash with relay
+- `list_paired_devices` — list locally tracked paired devices
+- `revoke_pairing` — revoke a pairing via relay control message
+
+**QA:**
+- Full TypeScript compilation check (`tsc --noEmit`) — zero errors
+- Rust compilation check (`cargo check`) — both `src-tauri/` and `relay/` pass
+
+---
+
 ## v0.8.3 — March 5, 2026
 
 ### Production-Ready Remote Access

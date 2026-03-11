@@ -460,6 +460,97 @@ export interface PeerDisconnectedMessage {
   type: "peer_disconnected";
 }
 
+// ---------------------------------------------------------------------------
+// Persistent Pairing Protocol Types
+// ---------------------------------------------------------------------------
+
+/** Message sent by desktop to relay to register for persistent connections */
+export interface RegisterDesktopMessage {
+  type: "register_desktop";
+  desktop_device_id: string;
+  desktop_public_key: string; // base64-encoded X25519 public key
+}
+
+/** Message sent by mobile to relay to reconnect via saved pairing token */
+export interface ReconnectPairedMessage {
+  type: "reconnect_paired";
+  pairing_token: string;
+  mobile_public_key: string; // base64-encoded X25519 public key
+}
+
+/** Sent to mobile when the paired desktop is offline */
+export interface PeerOfflineMessage {
+  type: "peer_offline";
+}
+
+/** Sent to mobile when the paired desktop comes online */
+export interface PeerOnlineMessage {
+  type: "peer_online";
+}
+
+/** Sent to mobile after successful reconnect via pairing token */
+export interface PairingEstablishedMessage {
+  type: "pairing_established";
+  pairing_id: string;
+  desktop_public_key: string;
+}
+
+/** Sent by desktop to relay to register a new pairing */
+export interface RegisterPairingMessage {
+  type: "register_pairing";
+  pairing_token_hash: string;
+  desktop_device_id: string;
+  desktop_public_key: string;
+  mobile_public_key: string;
+  device_name: string;
+}
+
+/** Relay response after pairing is registered */
+export interface PairingRegisteredMessage {
+  type: "pairing_registered";
+  pairing_id: string;
+}
+
+/** Sent by desktop to relay to revoke a specific pairing */
+export interface RevokePairingMessage {
+  type: "revoke_pairing";
+  pairing_id: string;
+}
+
+/** Sent by desktop to relay to revoke all pairings */
+export interface RevokeAllPairingsMessage {
+  type: "revoke_all_pairings";
+  desktop_device_id: string;
+}
+
+/** Sent to mobile when their pairing has been revoked */
+export interface PairingRevokedMessage {
+  type: "pairing_revoked";
+  pairing_id: string;
+}
+
+// ---------------------------------------------------------------------------
+// Paired Device Types (for desktop UI)
+// ---------------------------------------------------------------------------
+
+/** A paired mobile device, displayed in the desktop Settings panel */
+export interface PairedDevice {
+  pairingId: string;
+  deviceName: string;
+  mobilePublicKey: string;
+  pairedAt: number;    // unix timestamp ms
+  expiresAt: number;   // unix timestamp ms
+  lastUsed: number;    // unix timestamp ms
+}
+
+/** Pairing token issued to mobile after successful PIN auth */
+export interface PairingToken {
+  token: string;          // raw 256-bit token (hex)
+  desktopDeviceId: string;
+  desktopName: string;
+  expiresAt: number;      // unix timestamp ms
+}
+
 export type RelayProtocolMessage =
   | CreateRoomMessage
   | RoomCreatedMessage
@@ -467,7 +558,17 @@ export type RelayProtocolMessage =
   | PeerJoinedMessage
   | RoomJoinedMessage
   | RelayErrorMessage
-  | PeerDisconnectedMessage;
+  | PeerDisconnectedMessage
+  | RegisterDesktopMessage
+  | ReconnectPairedMessage
+  | PeerOfflineMessage
+  | PeerOnlineMessage
+  | PairingEstablishedMessage
+  | RegisterPairingMessage
+  | PairingRegisteredMessage
+  | RevokePairingMessage
+  | RevokeAllPairingsMessage
+  | PairingRevokedMessage;
 
 // ---------------------------------------------------------------------------
 // E2E Encryption Types
@@ -491,4 +592,10 @@ export interface RelayStatus {
   roomCode: string | null;
   clientConnected: boolean;
   publicKey: string | null;
+  /** Persistent pairing mode (registered with relay, no room code needed) */
+  persistentMode: boolean;
+  /** Desktop device ID (SHA-256 of public key) */
+  desktopDeviceId: string | null;
+  /** List of paired mobile devices */
+  pairedDevices: PairedDevice[];
 }

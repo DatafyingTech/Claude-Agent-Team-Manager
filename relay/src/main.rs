@@ -1,11 +1,13 @@
 mod config;
 mod health;
+mod pairing;
 mod rate_limit;
 mod room;
 mod ws;
 
 use axum::Router;
 use axum::routing::get;
+use dashmap::DashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -13,6 +15,7 @@ use tower_http::cors::CorsLayer;
 
 use crate::config::Config;
 use crate::health::{HealthState, health_handler};
+use crate::pairing::PairingRegistry;
 use crate::rate_limit::RateLimitState;
 use crate::room::RoomManager;
 use crate::ws::{AppState, ws_upgrade};
@@ -31,6 +34,15 @@ async fn main() {
         config.room_ttl_secs,
         config.idle_timeout_secs,
     );
+    log::info!(
+        "Pairing expiry: {} days, Data dir: {}",
+        config.pairing_expiry_days,
+        config.data_dir,
+    );
+
+    // Ensure the data directory exists.
+    std::fs::create_dir_all(&config.data_dir)
+        .unwrap_or_else(|e| panic!("Failed to create data dir '{}': {}", config.data_dir, e));
 
     let room_manager = RoomManager::new(config.max_rooms);
     let rate_limit = RateLimitState::new(
@@ -40,6 +52,10 @@ async fn main() {
         config.per_ip_max_connections,
     );
 
+    let pairing = Arc::new(PairingRegistry::new(&config.data_dir));
+    let desktop_connections = Arc::new(DashMap::new());
+    let waiting_mobiles = Arc::new(DashMap::new());
+
     let started_at = Instant::now();
 
     // Shared state for the WebSocket handler.
@@ -47,17 +63,23 @@ async fn main() {
         room_manager: Arc::clone(&room_manager),
         rate_limit: Arc::clone(&rate_limit),
         config: config.clone(),
+        pairing: Arc::clone(&pairing),
+        desktop_connections: Arc::clone(&desktop_connections),
+        waiting_mobiles: Arc::clone(&waiting_mobiles),
     });
 
     // Shared state for the health endpoint.
     let health_state = Arc::new(HealthState {
         room_manager: Arc::clone(&room_manager),
+        pairing: Arc::clone(&pairing),
+        desktop_connections: Arc::clone(&desktop_connections),
         started_at,
     });
 
-    // Background task: periodically reap expired rooms.
+    // Background task: periodically reap expired rooms and pairings.
     {
         let rm = Arc::clone(&room_manager);
+        let pr = Arc::clone(&pairing);
         let room_ttl = config.room_ttl_secs;
         let idle_timeout = config.idle_timeout_secs;
         tokio::spawn(async move {
@@ -65,6 +87,7 @@ async fn main() {
             loop {
                 interval.tick().await;
                 rm.cleanup_expired(room_ttl, idle_timeout);
+                pr.cleanup_expired();
             }
         });
     }

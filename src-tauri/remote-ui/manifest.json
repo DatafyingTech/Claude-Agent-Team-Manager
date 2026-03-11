@@ -1,24 +1,22 @@
 {
   "name": "ATM Remote",
   "short_name": "ATM",
-  "description": "Remote access to your ATM agent team hierarchy",
-  "start_url": ".",
+  "description": "Remote control for Agent Team Manager",
+  "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#0d1117",
   "background_color": "#0d1117",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%230d1117'/%3E%3Ctext x='96' y='120' font-family='system-ui' font-size='80' font-weight='800' fill='%234a9eff' text-anchor='middle'%3EATM%3C/text%3E%3C/svg%3E",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='64' fill='%230d1117'/%3E%3Ctext x='256' y='320' font-family='system-ui' font-size='200' font-weight='800' fill='%234a9eff' text-anchor='middle'%3EATM%3C/text%3E%3C/svg%3E",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png"
     }
   ],
   "categories": ["developer", "utilities"],

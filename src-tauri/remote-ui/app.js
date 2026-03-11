@@ -18,7 +18,7 @@ const Icons = {
 
 // ─── Application State ─────────────────────────────────────────
 const state = {
-  screen: 'auth',       // 'connect' | 'auth' | 'tree' | 'detail'
+  screen: 'auth',       // 'connect' | 'auth' | 'tree' | 'detail' | 'paired' | 'settings'
   prevScreen: null,
   ws: null,
   token: null,
@@ -51,6 +51,11 @@ const state = {
   sharedKey: null,
   peerPublicKey: null,
   sendNonce: 0,
+  // Persistent pairing
+  savedPairing: null,     // { desktopId, token, desktopName, relayUrl, pairedAt, expiresAt, desktopPublicKey }
+  pairingMode: false,     // true when using saved pairing (no room code needed)
+  desktopOnline: false,   // whether desktop is connected to relay
+  waitingForDesktop: false, // true when waiting for desktop to come online
 };
 
 // ─── Constants ─────────────────────────────────────────────────
@@ -148,6 +153,68 @@ function base64ToUint8(str) {
 function getPublicKeyBase64() {
   if (!state.keyPair) return '';
   return uint8ToBase64(state.keyPair.publicKey);
+}
+
+// ─── Pairing Storage (IndexedDB) ─────────────────────────────
+function openPairingDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('atm-pairing', 1);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('pairings')) {
+        db.createObjectStore('pairings', { keyPath: 'desktopId' });
+      }
+    };
+    request.onsuccess = (e) => resolve(e.target.result);
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function savePairing(pairing) {
+  const db = await openPairingDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('pairings', 'readwrite');
+    tx.objectStore('pairings').put(pairing);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function getSavedPairing() {
+  const db = await openPairingDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('pairings', 'readonly');
+    const store = tx.objectStore('pairings');
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const pairings = request.result;
+      // Return the first non-expired pairing
+      const now = Date.now();
+      const valid = pairings.find(p => p.expiresAt > now);
+      resolve(valid || null);
+    };
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function deletePairing(desktopId) {
+  const db = await openPairingDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('pairings', 'readwrite');
+    tx.objectStore('pairings').delete(desktopId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function deleteAllPairings() {
+  const db = await openPairingDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('pairings', 'readwrite');
+    tx.objectStore('pairings').clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
 }
 
 // ─── Toast System ──────────────────────────────────────────────
@@ -262,7 +329,15 @@ function connectWebSocket() {
     state.connected = true;
     state.connecting = false;
 
-    if (state.relayMode) {
+    if (state.pairingMode && state.savedPairing) {
+      // Reconnect using saved pairing token
+      initCrypto();
+      ws.send(JSON.stringify({
+        type: 'reconnect_paired',
+        pairing_token: state.savedPairing.token,
+        mobile_public_key: getPublicKeyBase64(),
+      }));
+    } else if (state.relayMode) {
       // In relay mode, send join_room with our public key
       initCrypto();
       ws.send(JSON.stringify({
@@ -281,6 +356,46 @@ function connectWebSocket() {
   ws.onmessage = (e) => {
     try {
       const raw = JSON.parse(e.data);
+
+      // Handle relay protocol messages that can arrive at any time
+      if (raw.type === 'peer_online') {
+        state.desktopOnline = true;
+        state.waitingForDesktop = false;
+        // Desktop came online, derive shared key from pairing's desktop public key
+        if (state.savedPairing && state.savedPairing.desktopPublicKey) {
+          deriveSharedKey(state.savedPairing.desktopPublicKey);
+        }
+        // Auto-request tree sync
+        state.screen = 'tree';
+        state.loadingTree = true;
+        sendMessage('get_tree', {});
+        startPing();
+        render();
+        showToast('Desktop connected', 'success');
+        return;
+      }
+      if (raw.type === 'peer_offline') {
+        state.desktopOnline = false;
+        state.waitingForDesktop = true;
+        render();
+        return;
+      }
+      if (raw.type === 'pairing_established') {
+        // Reconnection via pairing token succeeded, desktop is online
+        // The desktop_public_key comes with this message for key derivation
+        if (raw.desktop_public_key) {
+          deriveSharedKey(raw.desktop_public_key);
+        }
+        state.desktopOnline = true;
+        state.waitingForDesktop = false;
+        state.screen = 'tree';
+        state.loadingTree = true;
+        sendMessage('get_tree', {});
+        startPing();
+        render();
+        showToast('Reconnected via saved pairing', 'success');
+        return;
+      }
 
       if (state.relayMode && !state.sharedKey) {
         // Handle relay protocol messages (pre-encryption)
@@ -341,9 +456,11 @@ function connectWebSocket() {
     render();
 
     // Auto-reconnect if we have credentials
-    const shouldReconnect = state.relayMode
-      ? (state.roomCode && state.screen !== 'connect')
-      : (state.token && state.screen !== 'auth');
+    const shouldReconnect = state.pairingMode
+      ? (state.savedPairing && state.screen !== 'connect')
+      : (state.relayMode
+        ? (state.roomCode && state.screen !== 'connect')
+        : (state.token && state.screen !== 'auth'));
 
     if (shouldReconnect) {
       state.reconnectTimer = setTimeout(() => {
@@ -392,10 +509,15 @@ function sendMessage(type, payload) {
 // ─── Message Handling ──────────────────────────────────────────
 function handleServerMessage(msg) {
   switch (msg.type) {
-    case 'full_sync':
-      state.nodes = msg.payload.nodes || [];
+    case 'full_sync': {
+      const raw = msg.payload.nodes || [];
+      state.nodes = Array.isArray(raw) ? raw : Object.values(raw);
+      if (msg.payload.metadata) {
+        state.metadata = msg.payload.metadata;
+      }
       state.loadingTree = false;
       break;
+    }
 
     case 'node_updated': {
       const idx = state.nodes.findIndex(n => n.id === msg.payload.node.id);
@@ -448,6 +570,37 @@ function handleServerMessage(msg) {
         state.authError = msg.payload.reason || 'Authentication failed';
       }
       break;
+
+    case 'pairing_issued': {
+      // Desktop issued a pairing token after successful auth
+      const { pairing_token, desktop_device_id, desktop_name, expires_at } = msg.payload;
+      if (pairing_token) {
+        const pairing = {
+          desktopId: desktop_device_id,
+          token: pairing_token,
+          desktopName: desktop_name || 'Desktop',
+          relayUrl: state.relayUrl || 'wss://atm-relay.datafying.tech',
+          pairedAt: Date.now(),
+          expiresAt: expires_at || (Date.now() + 90 * 24 * 60 * 60 * 1000),
+          desktopPublicKey: state.peerPublicKey || '',
+        };
+        state.savedPairing = pairing;
+        state.pairingMode = true;
+        savePairing(pairing).catch(err => console.warn('Failed to save pairing:', err));
+        showToast('Device paired! Will auto-connect next time.', 'success', 5000);
+      }
+      break;
+    }
+
+    case 'pairing_revoked': {
+      // Desktop revoked our pairing
+      showToast('Pairing revoked by desktop', 'error');
+      deleteAllPairings().catch(() => {});
+      state.savedPairing = null;
+      state.pairingMode = false;
+      handleDisconnect();
+      break;
+    }
 
     default:
       break;
@@ -531,6 +684,12 @@ function render() {
     case 'detail':
       app.innerHTML = renderDetail();
       break;
+    case 'paired':
+      app.innerHTML = renderPairedConnect();
+      break;
+    case 'settings':
+      app.innerHTML = renderMobileSettings();
+      break;
   }
 
   if (transition) {
@@ -601,6 +760,53 @@ function renderAuth() {
   `;
 }
 
+// ─── Paired Connect Screen ──────────────────────────────────────
+function renderPairedConnect() {
+  return `
+    <div class="auth-screen">
+      <div class="auth-logo">ATM</div>
+      <h1 class="auth-title">ATM Remote</h1>
+      ${state.waitingForDesktop ? `
+        <div style="text-align:center;padding:24px 0">
+          <div style="font-size:14px;color:var(--text);margin-bottom:8px">
+            ${state.connecting ? 'Connecting...' : 'Desktop is offline'}
+          </div>
+          <div style="font-size:12px;color:var(--text-dim);margin-bottom:24px">
+            ${state.savedPairing ? esc(state.savedPairing.desktopName || 'Desktop') : 'Desktop'}
+          </div>
+          ${!state.connecting ? `
+            <button class="auth-btn" id="retry-paired-btn" style="margin-bottom:12px">
+              Retry Connection
+            </button>
+          ` : `
+            <div style="display:flex;justify-content:center;padding:16px 0">
+              <span class="auth-loading"></span>
+            </div>
+          `}
+        </div>
+      ` : `
+        <div style="text-align:center;padding:24px 0">
+          <div style="display:flex;justify-content:center;padding:16px 0">
+            <span class="auth-loading"></span>
+          </div>
+          <div style="font-size:14px;color:var(--text);margin-bottom:4px">
+            Connecting to ${esc(state.savedPairing ? state.savedPairing.desktopName || 'Desktop' : 'Desktop')}...
+          </div>
+          <div style="font-size:12px;color:var(--text-dim)">
+            Using saved pairing
+          </div>
+        </div>
+      `}
+      ${state.authError ? '<div class="auth-error">' + esc(state.authError) + '</div>' : ''}
+      <div style="margin-top:24px;text-align:center">
+        <button class="link-btn" id="unpair-btn" style="background:none;border:none;color:var(--text-dim);font-size:12px;cursor:pointer;text-decoration:underline;">
+          Unpair and connect manually
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 // ─── Connect Screen (Relay Mode) ────────────────────────────────
 function renderConnect() {
   return `
@@ -609,10 +815,10 @@ function renderConnect() {
       <h1 class="auth-title">ATM Remote</h1>
       <p class="auth-subtitle">Enter the room code shown on your desktop</p>
       <div style="margin-bottom:16px">
-        <input class="room-code-input" id="room-code-input" type="text"
+        <input class="room-code-input" id="room-code-input" type="search"
           placeholder="ATM-XXXXXX" maxlength="10" autocomplete="off"
-          inputmode="text" autocorrect="off" spellcheck="false" autocapitalize="characters"
-          style="font-size:24px;text-align:center;letter-spacing:4px;padding:12px 16px;width:100%;box-sizing:border-box;background:var(--bg-card);border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:monospace;"
+          inputmode="search" autocorrect="off" spellcheck="false" autocapitalize="characters"
+          style="font-size:24px;text-align:center;letter-spacing:4px;padding:12px 16px;width:100%;box-sizing:border-box;background:var(--bg-card);border:2px solid var(--border);border-radius:12px;color:var(--text);font-family:monospace;-webkit-appearance:none;appearance:none;"
           value="${esc(state.roomCode || '')}">
       </div>
       <button class="auth-btn" id="connect-relay-btn" ${state.connecting ? 'disabled' : ''}>
@@ -817,11 +1023,73 @@ function renderBottomNav(active) {
         ${Icons.refresh}
         <span>Refresh</span>
       </button>
+      <button class="bottom-nav-item${active === 'settings' ? ' active' : ''}" data-nav="settings">
+        ${Icons.info}
+        <span>Settings</span>
+      </button>
       <button class="bottom-nav-item" data-nav="disconnect" aria-label="Disconnect">
         ${Icons.disconnect}
         <span>Disconnect</span>
       </button>
     </nav>
+  `;
+}
+
+// ─── Settings Screen ────────────────────────────────────────────
+function renderMobileSettings() {
+  const pairing = state.savedPairing;
+  return `
+    <div class="tree-screen">
+      ${renderStatusBar()}
+      <div class="detail-content" style="padding:16px">
+        <div class="detail-card">
+          <div class="detail-card-header">
+            <span class="detail-card-title">Connection</span>
+          </div>
+          <div class="detail-card-body">
+            <div class="info-row">
+              <span class="info-label">Status</span>
+              <span class="info-value">${state.connected ? 'Connected' : 'Disconnected'}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Mode</span>
+              <span class="info-value">${state.pairingMode ? 'Persistent Pairing' : (state.relayMode ? 'Cloud Relay' : 'LAN')}</span>
+            </div>
+            ${state.latencyMs > 0 ? `
+              <div class="info-row">
+                <span class="info-label">Latency</span>
+                <span class="info-value">${state.latencyMs}ms</span>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+        ${pairing ? `
+          <div class="detail-card">
+            <div class="detail-card-header">
+              <span class="detail-card-title">Paired Desktop</span>
+            </div>
+            <div class="detail-card-body">
+              <div class="info-row">
+                <span class="info-label">Name</span>
+                <span class="info-value">${esc(pairing.desktopName || 'Desktop')}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Paired</span>
+                <span class="info-value">${new Date(pairing.pairedAt).toLocaleDateString()}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">Expires</span>
+                <span class="info-value">${new Date(pairing.expiresAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+          </div>
+          <button class="action-btn secondary" id="unpair-settings-btn" style="width:100%;margin-top:12px">
+            Unpair Device
+          </button>
+        ` : ''}
+      </div>
+      ${renderBottomNav('settings')}
+    </div>
   `;
 }
 
@@ -1099,6 +1367,21 @@ function attachEventListeners() {
     if (submitBtn) {
       submitBtn.addEventListener('click', handleAuthSubmit);
     }
+  }
+
+  // --- Paired Screen ---
+  if (state.screen === 'paired') {
+    const retryBtn = document.getElementById('retry-paired-btn');
+    if (retryBtn) retryBtn.addEventListener('click', () => connectWebSocket());
+    const unpairBtn = document.getElementById('unpair-btn');
+    if (unpairBtn) unpairBtn.addEventListener('click', handleUnpair);
+  }
+
+  // --- Settings Screen ---
+  if (state.screen === 'settings') {
+    const unpairBtn = document.getElementById('unpair-settings-btn');
+    if (unpairBtn) unpairBtn.addEventListener('click', handleUnpair);
+    attachBottomNavListeners();
   }
 
   // --- Tree Screen ---
@@ -1383,6 +1666,10 @@ function attachBottomNavListeners() {
           render();
           sendMessage('get_tree', {});
           break;
+        case 'settings':
+          state.screen = 'settings';
+          render();
+          break;
         case 'disconnect':
           handleDisconnect();
           break;
@@ -1446,6 +1733,15 @@ function handleSaveEdit() {
   render();
 }
 
+function handleUnpair() {
+  deleteAllPairings().catch(() => {});
+  state.savedPairing = null;
+  state.pairingMode = false;
+  handleDisconnect();
+  state.screen = 'connect';
+  render();
+}
+
 function handleDisconnect() {
   if (state.ws) {
     state.ws.close();
@@ -1470,6 +1766,10 @@ function handleDisconnect() {
   state.loadingTree = true;
   state.authError = null;
   state.authLocked = false;
+  state.pairingMode = false;
+  state.desktopOnline = false;
+  state.waitingForDesktop = false;
+  // Don't clear savedPairing from IndexedDB on disconnect — only on explicit unpair
   state.relayMode = false;
   state.roomCode = null;
   state.relayUrl = null;
@@ -1494,7 +1794,56 @@ function registerServiceWorker() {
 }
 
 // ─── Init ──────────────────────────────────────────────────────
-function init() {
+async function init() {
+  // Check for saved pairing FIRST
+  try {
+    const savedPairing = await getSavedPairing();
+    if (savedPairing) {
+      state.savedPairing = savedPairing;
+      state.pairingMode = true;
+      state.relayMode = true;
+      state.relayUrl = savedPairing.relayUrl;
+      state.screen = 'paired';
+      render();
+      // Auto-connect
+      connectWebSocket();
+      registerServiceWorker();
+
+      // Handle visibility change — reconnect if needed
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && !state.connected && state.screen !== 'connect') {
+          if (state.pairingMode && state.savedPairing) {
+            connectWebSocket();
+          } else if (state.relayMode ? state.roomCode : state.token) {
+            connectWebSocket();
+          }
+        }
+      });
+
+      // Handle back button / swipe gesture
+      window.addEventListener('popstate', (e) => {
+        if (state.screen === 'detail') {
+          state.screen = 'tree';
+          state.editing = false;
+          state.editDraft = null;
+          render();
+        } else if (state.screen === 'tree') {
+          if (state.connected) {
+            history.pushState({ screen: 'tree' }, '');
+          }
+        } else if (state.screen === 'settings') {
+          state.screen = 'tree';
+          render();
+        }
+      });
+
+      history.replaceState({ screen: state.screen }, '');
+      return;
+    }
+  } catch (err) {
+    console.warn('Failed to load saved pairing:', err);
+  }
+
   // Check URL params for relay mode (from QR code scan)
   const params = new URLSearchParams(window.location.search);
   const relayCode = params.get('code');
@@ -1532,7 +1881,9 @@ function init() {
   // Handle visibility change — reconnect if needed
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && !state.connected && state.screen !== 'auth' && state.screen !== 'connect') {
-      if (state.relayMode ? state.roomCode : state.token) {
+      if (state.pairingMode && state.savedPairing) {
+        connectWebSocket();
+      } else if (state.relayMode ? state.roomCode : state.token) {
         connectWebSocket();
       }
     }
@@ -1550,6 +1901,9 @@ function init() {
       if (state.connected) {
         history.pushState({ screen: 'tree' }, '');
       }
+    } else if (state.screen === 'settings') {
+      state.screen = 'tree';
+      render();
     }
   });
 

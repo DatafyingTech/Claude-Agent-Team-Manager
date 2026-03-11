@@ -25,6 +25,10 @@ pub struct Config {
     pub per_ip_max_rooms_per_hour: u32,
     /// Maximum forwarded messages per second per connection.
     pub msg_rate_limit_per_sec: u32,
+    /// How many days a pairing token remains valid.
+    pub pairing_expiry_days: u64,
+    /// Directory for persistent data (SQLite, etc.).
+    pub data_dir: String,
 }
 
 impl Default for Config {
@@ -39,6 +43,8 @@ impl Default for Config {
             per_ip_max_connections: 5,
             per_ip_max_rooms_per_hour: 10,
             msg_rate_limit_per_sec: 100,
+            pairing_expiry_days: 90,
+            data_dir: "./data".to_string(),
         }
     }
 }

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { REMOTE_CONFIG_DEFAULTS, type RemoteConfig } from "@/types/remote";
-import type { RelayStatus } from "@/types/remote";
+import type { RelayStatus, PairedDevice } from "@/types/remote";
 import { remoteSync } from "@/services/remote-sync";
 import { useTreeStore } from "@/store/tree-store";
 
@@ -50,12 +50,18 @@ interface RemoteActions {
   connectRemote(): void;
   /** Stop the desktop WebSocket connection. */
   disconnectRemote(): void;
-  /** Connect to cloud relay and create a room. */
+  /** Connect to cloud relay and create a room (ephemeral). */
   connectRelay(relayUrl: string): Promise<void>;
+  /** Connect to cloud relay in persistent mode (auto-register, no room code). */
+  connectRelayPersistent(relayUrl: string): Promise<void>;
   /** Disconnect from cloud relay. */
   disconnectRelay(): void;
   /** Update relay status (called from event listeners). */
   setRelayStatus(updates: Partial<RelayStatus>): void;
+  /** List paired devices from relay. */
+  loadPairedDevices(): Promise<void>;
+  /** Revoke a specific paired device. */
+  revokePairing(pairingId: string): Promise<void>;
 }
 
 interface UiActions {
@@ -117,6 +123,9 @@ export const useUiStore = create<UiStore>()((set, get) => ({
     roomCode: null,
     clientConnected: false,
     publicKey: null,
+    persistentMode: false,
+    desktopDeviceId: null,
+    pairedDevices: [],
   },
 
   selectNode(id: string | null) {
@@ -352,6 +361,37 @@ export const useUiStore = create<UiStore>()((set, get) => ({
     unsubscribers.push(unsubTree);
   },
 
+  async connectRelayPersistent(relayUrl: string) {
+    try {
+      const status = await remoteSync.initRelayPersistent(relayUrl);
+      set({
+        remoteConnected: true,
+        relayStatus: status,
+      });
+    } catch (err) {
+      console.warn("[ATM] Failed to connect to relay (persistent):", err);
+      remoteSync.dispose();
+      throw err;
+    }
+
+    const unsub = remoteSync.onConnectionChange((connected, clientCount) => {
+      set({
+        remoteConnected: connected,
+        remoteClientCount: clientCount,
+        relayStatus: {
+          ...get().relayStatus,
+          connected,
+          clientConnected: clientCount > 0,
+        },
+      });
+    });
+    unsubscribers.push(unsub);
+
+    // Register tree-store push/reconnect handlers
+    const unsubTree = useTreeStore.getState().initRemoteSync();
+    unsubscribers.push(unsubTree);
+  },
+
   disconnectRelay() {
     unsubscribers.forEach((fn) => fn());
     unsubscribers = [];
@@ -364,6 +404,9 @@ export const useUiStore = create<UiStore>()((set, get) => ({
         roomCode: null,
         clientConnected: false,
         publicKey: null,
+        persistentMode: false,
+        desktopDeviceId: null,
+        pairedDevices: [],
       },
     });
   },
@@ -372,5 +415,26 @@ export const useUiStore = create<UiStore>()((set, get) => ({
     set((state) => ({
       relayStatus: { ...state.relayStatus, ...updates },
     }));
+  },
+
+  async loadPairedDevices() {
+    const devices = await remoteSync.listPairedDevices();
+    set((state) => ({
+      relayStatus: { ...state.relayStatus, pairedDevices: devices },
+    }));
+  },
+
+  async revokePairing(pairingId: string) {
+    const success = await remoteSync.revokePairing(pairingId);
+    if (success) {
+      set((state) => ({
+        relayStatus: {
+          ...state.relayStatus,
+          pairedDevices: state.relayStatus.pairedDevices.filter(
+            (d) => d.pairingId !== pairingId
+          ),
+        },
+      }));
+    }
   },
 }));

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { homeDir } from "@tauri-apps/api/path";
+import { readTextFile, exists } from "@tauri-apps/plugin-fs";
 import { ReactFlowProvider } from "@xyflow/react";
 import { TreeCanvas } from "./components/tree/TreeCanvas";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
@@ -131,15 +132,32 @@ function App() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Load from user's home directory on mount
+  // Load project on mount — use saved projectPath if available, else home directory
   useEffect(() => {
-    homeDir().then((home) => {
-      console.log("[ATM] Home directory resolved to:", home);
+    (async () => {
+      const home = await homeDir();
+      let targetPath = home;
+
+      try {
+        const settingsPath = `${home.replace(/[\\/]+$/, "")}/.aui/settings.json`;
+        if (await exists(settingsPath)) {
+          const raw = await readTextFile(settingsPath);
+          const parsed = JSON.parse(raw);
+          if (parsed.projectPath && typeof parsed.projectPath === "string") {
+            if (await exists(parsed.projectPath)) {
+              targetPath = parsed.projectPath;
+            }
+          }
+        }
+      } catch {
+        // Fall back to home directory
+      }
+
+      console.log("[ATM] Loading project from:", targetPath);
       console.log("[ATM] Platform:", navigator.userAgent);
-      loadProject(home).then(() => {
-        useTreeStore.getState().autoGroupByPrefix();
-      });
-    });
+      await loadProject(targetPath);
+      useTreeStore.getState().autoGroupByPrefix();
+    })();
   }, [loadProject]);
 
   // Set up file watcher when project path changes

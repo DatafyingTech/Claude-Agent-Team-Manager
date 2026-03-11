@@ -115,7 +115,7 @@ dependencies = [
 
 [[package]]
 name = "atm"
-version = "0.8.3"
+version = "0.8.5"
 dependencies = [
  "axum",
  "axum-server",

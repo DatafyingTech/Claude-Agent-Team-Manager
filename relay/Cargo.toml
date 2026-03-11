@@ -19,3 +19,5 @@ base64 = "0.22"
 dashmap = "6"
 governor = "0.8"
 tower = "0.5"
+rusqlite = { version = "0.31", features = ["bundled"] }
+sha2 = "0.10"

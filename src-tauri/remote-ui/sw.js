@@ -2,13 +2,14 @@
 // ATM Remote — Service Worker (Offline Support)
 // ============================================================
 
-const CACHE_NAME = 'atm-remote-v1';
+const CACHE_NAME = 'atm-remote-v2';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './manifest.json',
+  './nacl.min.js',
 ];
 
 // Install: pre-cache static assets
