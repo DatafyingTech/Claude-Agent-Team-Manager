@@ -759,10 +759,8 @@ export function ContextHub() {
       <div
         style={{
           flexShrink: 0,
-          background: "linear-gradient(180deg, rgba(21,27,35,0.95) 0%, rgba(21,27,35,0.85) 100%)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-          borderBottom: "1px solid var(--bg-hover-subtle)",
+          background: "var(--bg-secondary)",
+          borderBottom: "1px solid var(--border-subtle)",
           padding: "14px 16px 12px",
         }}
       >
