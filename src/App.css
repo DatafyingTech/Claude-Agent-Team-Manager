@@ -29,6 +29,20 @@
   --radius-xl: 12px;
 }
 
+/* Tinted background tokens — used for node cards and inline panels */
+:root {
+  --tint-blue:       rgba(74, 158, 255, 0.06);
+  --tint-blue-hover: rgba(74, 158, 255, 0.14);
+  --tint-green:      rgba(63, 185, 80, 0.06);
+  --tint-orange:     rgba(240, 136, 62, 0.07);
+  --tint-purple:     rgba(217, 70, 239, 0.06);
+  --tint-gold:       rgba(210, 153, 34, 0.08);
+  --tint-subagent:   rgba(165, 214, 255, 0.07);
+  --bg-toast:        #1e1e3a;
+  --shadow-panel:    rgba(0, 0, 0, 0.4);
+  --shadow-dropdown: rgba(0, 0, 0, 0.35);
+}
+
 /* Light theme overrides — applied when <html data-theme="light"> */
 [data-theme="light"] {
   --bg-primary: #ffffff;
@@ -40,6 +54,17 @@
   --text-tertiary: #9198a1;
   --border-color: #d1d9e0;
   --border-hover: #8c959f;
+  /* Tint tokens need more opacity on light backgrounds to remain visible */
+  --tint-blue:       rgba(74, 158, 255, 0.13);
+  --tint-blue-hover: rgba(74, 158, 255, 0.24);
+  --tint-green:      rgba(63, 185, 80, 0.13);
+  --tint-orange:     rgba(240, 136, 62, 0.13);
+  --tint-purple:     rgba(217, 70, 239, 0.11);
+  --tint-gold:       rgba(210, 153, 34, 0.13);
+  --tint-subagent:   rgba(74, 140, 210, 0.13);
+  --bg-toast:        #eaeef2;
+  --shadow-panel:    rgba(0, 0, 0, 0.12);
+  --shadow-dropdown: rgba(0, 0, 0, 0.10);
 }
 
 * {

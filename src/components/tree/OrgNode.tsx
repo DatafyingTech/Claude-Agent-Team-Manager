@@ -119,15 +119,15 @@ function OrgNodeInner({ data, selected }: NodeProps) {
   const currentHandleStyle = hovered ? handleHoverStyle : handleBaseStyle;
 
   const background = isPipeline
-    ? "rgba(217, 70, 239, 0.06)"
+    ? "var(--tint-purple)"
     : isGroup
       ? isSubAgent
-        ? "rgba(165, 214, 255, 0.06)"
+        ? "var(--tint-subagent)"
         : isMember
-          ? "rgba(240, 136, 62, 0.06)"
-          : "rgba(74, 158, 255, 0.06)"
+          ? "var(--tint-orange)"
+          : "var(--tint-blue)"
       : isRoot
-        ? "rgba(210, 153, 34, 0.08)"
+        ? "var(--tint-gold)"
         : "var(--bg-surface, #1c2333)";
 
   const borderLeftStyle = isGroup || isPipeline

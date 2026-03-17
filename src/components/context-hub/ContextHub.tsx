@@ -502,7 +502,7 @@ function ImportDropdown({
         background: "var(--bg-surface, #1c2333)",
         border: "1px solid var(--border-color)",
         borderRadius: 8,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+        boxShadow: "0 8px 24px var(--shadow-panel)",
         zIndex: 200,
         padding: 6,
       }}
@@ -750,7 +750,7 @@ export function ContextHub() {
         position: "fixed", top: "var(--toolbar-height)", right: 0, bottom: 0,
         width: 480, background: "var(--bg-secondary)",
         borderLeft: "1px solid var(--border-color)",
-        boxShadow: "-4px 0 24px rgba(0,0,0,0.4)",
+        boxShadow: "-4px 0 24px var(--shadow-panel)",
         display: "flex", flexDirection: "column", zIndex: 100,
         animation: "slideInRight 0.2s ease",
       }}

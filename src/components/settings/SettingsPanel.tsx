@@ -170,7 +170,7 @@ export function SettingsPanel() {
         width: 400,
         background: "var(--bg-secondary)",
         borderLeft: "1px solid var(--border-color)",
-        boxShadow: "-4px 0 24px rgba(0,0,0,0.4)",
+        boxShadow: "-4px 0 24px var(--shadow-panel)",
         display: "flex",
         flexDirection: "column",
         zIndex: 150,

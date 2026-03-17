@@ -730,7 +730,7 @@ IMPORTANT: Each agent already has their full skill file content above. Pass it d
               alignItems: "flex-start",
               justifyContent: "space-between",
               padding: "6px 8px",
-              background: "rgba(63, 185, 80, 0.05)",
+              background: "var(--tint-green)",
               border: "1px solid var(--border-color)",
               borderRadius: 4,
               marginBottom: 4,
@@ -961,7 +961,7 @@ IMPORTANT: Each agent already has their full skill file content above. Pass it d
                 alignItems: "center",
                 gap: 8,
                 padding: "6px 8px",
-                background: "rgba(74, 158, 255, 0.05)",
+                background: "var(--tint-blue)",
                 border: "1px solid var(--border-color)",
                 borderRadius: 4,
                 marginBottom: 4,
@@ -970,11 +970,11 @@ IMPORTANT: Each agent already has their full skill file content above. Pass it d
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLDivElement).style.background =
-                  "rgba(74, 158, 255, 0.12)";
+                  "var(--tint-blue-hover)";
               }}
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLDivElement).style.background =
-                  "rgba(74, 158, 255, 0.05)";
+                  "var(--tint-blue)";
               }}
             >
               <span
