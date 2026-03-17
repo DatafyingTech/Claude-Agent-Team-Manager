@@ -15,6 +15,7 @@ interface AppSettings {
   agentColor: string;
   accentColor: string;
   autoSave: boolean;
+  theme: "dark" | "light";
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -23,6 +24,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   agentColor: "#f0883e",
   accentColor: "#4a9eff",
   autoSave: true,
+  theme: "dark",
 };
 
 const labelStyle: CSSProperties = {
@@ -60,10 +62,10 @@ const sectionStyle: CSSProperties = {
 };
 
 /**
- * Persist the chosen project path to ~/.aui/settings.json so it survives restarts.
- * Pass null to clear the saved path (reset to home).
+ * Persist the chosen project path (and optionally theme) to ~/.aui/settings.json
+ * so they survive restarts. Pass null for path to clear the saved path (reset to home).
  */
-async function saveProjectPath(path: string | null) {
+async function saveProjectPath(path: string | null, theme?: "dark" | "light") {
   const home = await homeDir();
   const auiDir = join(home, ".aui");
   if (!(await exists(auiDir))) {
@@ -83,12 +85,16 @@ async function saveProjectPath(path: string | null) {
   } else {
     delete current.projectPath;
   }
+  if (theme) {
+    current.theme = theme;
+  }
   await writeTextFile(settingsPath, JSON.stringify(current, null, 2));
 }
 
 export function SettingsPanel() {
   const settingsOpen = useUiStore((s) => s.settingsOpen);
   const toggleSettings = useUiStore((s) => s.toggleSettings);
+  const setTheme = useUiStore((s) => s.setTheme);
   const projectPath = useTreeStore((s) => s.projectPath);
 
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -113,7 +119,11 @@ export function SettingsPanel() {
         if (await exists(settingsPath)) {
           const raw = await readTextFile(settingsPath);
           const parsed = JSON.parse(raw);
-          if (!cancelled) setSettings({ ...DEFAULT_SETTINGS, ...parsed });
+          if (!cancelled) {
+            const loaded = { ...DEFAULT_SETTINGS, ...parsed };
+            setSettings(loaded);
+            setTheme(loaded.theme);
+          }
         }
       } catch {
         // Use defaults
@@ -137,6 +147,10 @@ export function SettingsPanel() {
       // Apply color overrides to CSS variables
       const root = document.documentElement;
       if (settings.accentColor) root.style.setProperty("--accent-blue", settings.accentColor);
+
+      // Apply and persist theme
+      setTheme(settings.theme);
+      await saveProjectPath(null, settings.theme);
 
       toast("Settings saved", "success");
     } catch (err) {
@@ -388,6 +402,33 @@ export function SettingsPanel() {
 
             {/* Preferences */}
             <div style={sectionStyle}>Preferences</div>
+
+            {/* Theme toggle */}
+            <div style={{ marginBottom: 16 }}>
+              <span style={labelStyle}>Theme</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                {(["dark", "light"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setSettings({ ...settings, theme: t })}
+                    style={{
+                      flex: 1,
+                      padding: "8px 0",
+                      background: settings.theme === t ? "var(--accent-blue)" : "var(--bg-elevated)",
+                      color: settings.theme === t ? "#fff" : "var(--text-secondary)",
+                      border: `1px solid ${settings.theme === t ? "var(--accent-blue)" : "var(--border-color)"}`,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: settings.theme === t ? 600 : 400,
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {t === "dark" ? "🌙 Dark" : "☀️ Light"}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <label
               style={{

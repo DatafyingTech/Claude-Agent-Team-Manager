@@ -29,6 +29,19 @@
   --radius-xl: 12px;
 }
 
+/* Light theme overrides — applied when <html data-theme="light"> */
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-surface: #ffffff;
+  --bg-elevated: #eaeef2;
+  --text-primary: #1f2328;
+  --text-secondary: #636c76;
+  --text-tertiary: #9198a1;
+  --border-color: #d1d9e0;
+  --border-hover: #8c959f;
+}
+
 * {
   margin: 0;
   padding: 0;
