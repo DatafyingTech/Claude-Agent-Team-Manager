@@ -254,6 +254,42 @@ fn delete_scheduled_task(task_name: String) -> Result<String, String> {
     }
 }
 
+/// Finds an available terminal emulator, preferring Wayland-native ones when running
+/// under a pure Wayland session (WAYLAND_DISPLAY set, DISPLAY unset).
+#[cfg(target_os = "linux")]
+fn find_terminal_emulator() -> Option<&'static str> {
+    let wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+    let x11 = std::env::var("DISPLAY").is_ok();
+    let pure_wayland = wayland && !x11;
+
+    // X11-only terminals that won't work without XWayland
+    const X11_ONLY: &[&str] = &["xterm", "urxvt"];
+
+    // Ordered by preference: Debian compat first, then common DEs, then fallbacks
+    const CANDIDATES: &[&str] = &[
+        "x-terminal-emulator", // Debian/Ubuntu alternatives system
+        "gnome-terminal",      // GNOME (native Wayland)
+        "konsole",             // KDE (native Wayland, default on Fedora KDE)
+        "xfce4-terminal",      // XFCE
+        "alacritty",           // Modern, widespread
+        "kitty",               // Modern, widespread
+        "tilix",               // GNOME alternative
+        "xterm",               // X11 fallback
+        "urxvt",               // X11 fallback
+    ];
+
+    CANDIDATES.iter().find(|&&term| {
+        if pure_wayland && X11_ONLY.contains(&term) {
+            return false;
+        }
+        StdCommand::new("which")
+            .arg(term)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }).copied()
+}
+
 /// Opens a visible terminal window running the given script.
 #[tauri::command]
 fn open_terminal(script_path: String) -> Result<(), String> {
@@ -287,21 +323,22 @@ fn open_terminal(script_path: String) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        let terminals = [
-            ("x-terminal-emulator", vec!["-e", &script_path]),
-            ("gnome-terminal", vec!["--", &script_path]),
-            ("xterm", vec!["-e", &script_path]),
-        ];
-        let mut launched = false;
-        for (term, args) in &terminals {
-            if StdCommand::new(term).args(args).spawn().is_ok() {
-                launched = true;
-                break;
-            }
-        }
-        if !launched {
-            return Err("No terminal emulator found".into());
-        }
+        let term = find_terminal_emulator().ok_or_else(|| {
+            "No terminal emulator found. Install gnome-terminal, konsole, xterm, or another terminal emulator.".to_string()
+        })?;
+
+        // Terminals that use "--" as argument separator instead of "-e"
+        const DASH_DASH_TERMS: &[&str] = &["gnome-terminal", "konsole", "kitty"];
+        let args: Vec<&str> = if DASH_DASH_TERMS.contains(&term) {
+            vec!["--", &script_path]
+        } else {
+            vec!["-e", &script_path]
+        };
+
+        StdCommand::new(term)
+            .args(&args)
+            .spawn()
+            .map_err(|e| format!("Failed to open terminal '{}': {}", term, e))?;
     }
 
     Ok(())
