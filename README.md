@@ -161,6 +161,29 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
+**Linux** (Fedora/RPM):
+```bash
+sudo dnf install -y \
+  webkit2gtk4.1-devel \
+  openssl-devel \
+  gtk3-devel \
+  libayatana-appindicator-gtk3-devel \
+  librsvg2-devel \
+  curl wget file gcc make
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+
+# Enable cron scheduling support
+sudo dnf install -y cronie
+sudo systemctl enable --now crond
+```
+
+> **Fedora note:** If `libayatana-appindicator-gtk3-devel` is not found, try `libappindicator-gtk3-devel`. If `webkit2gtk4.1-devel` is missing, also install `libsoup3-devel`.
+
+> **Wayland:** ATM supports Wayland natively via gnome-terminal or konsole. If you are running a pure Wayland session (no XWayland), ensure one of these is installed.
+
 </details>
 
 **Build for production**:
@@ -221,7 +244,8 @@ pnpm tauri build
 |----------|--------|---------|
 | Windows | Full support | PowerShell |
 | macOS | Full support | bash (Terminal.app) |
-| Linux | Supported | bash |
+| Linux (Debian/Ubuntu) | Supported | gnome-terminal, xterm, or any installed emulator |
+| Linux (Fedora/RPM) | Supported | konsole, gnome-terminal, alacritty, kitty, xterm |
 
 ---
 
