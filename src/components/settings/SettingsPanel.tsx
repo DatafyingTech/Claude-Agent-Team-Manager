@@ -410,7 +410,7 @@ export function SettingsPanel() {
                 {(["dark", "light"] as const).map((t) => (
                   <button
                     key={t}
-                    onClick={() => setSettings({ ...settings, theme: t })}
+                    onClick={() => { setSettings({ ...settings, theme: t }); setTheme(t); }}
                     style={{
                       flex: 1,
                       padding: "8px 0",

@@ -194,7 +194,7 @@ function OrgNodeInner({ data, selected }: NodeProps) {
         style={{
           fontWeight: 700,
           fontSize: 14,
-          color: "#fff",
+          color: "var(--text-primary)",
           marginTop: 4,
           marginBottom: 4,
           overflow: "hidden",
@@ -210,7 +210,7 @@ function OrgNodeInner({ data, selected }: NodeProps) {
       <div
         style={{
           fontSize: 12,
-          color: "#a0a0a0",
+          color: "var(--text-secondary)",
           lineHeight: "1.3",
           overflow: "hidden",
           display: "-webkit-box",
@@ -291,7 +291,7 @@ function OrgNodeInner({ data, selected }: NodeProps) {
           <span
             style={{
               fontSize: 10,
-              color: "#a0a0a0",
+              color: "var(--text-tertiary)",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -319,7 +319,7 @@ function OrgNodeInner({ data, selected }: NodeProps) {
                 fontSize: 9,
                 fontWeight: 600,
                 color: "#3fb950",
-                background: "rgba(63, 185, 80, 0.12)",
+                background: "var(--tint-green)",
                 padding: "1px 5px",
                 borderRadius: 8,
                 whiteSpace: "nowrap",
