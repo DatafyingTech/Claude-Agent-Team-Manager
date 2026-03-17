@@ -29,10 +29,82 @@
   --radius-xl: 12px;
 }
 
+/* Tinted background tokens — used for node cards and inline panels */
+:root {
+  --tint-blue:       rgba(74, 158, 255, 0.06);
+  --tint-blue-hover: rgba(74, 158, 255, 0.14);
+  --tint-green:      rgba(63, 185, 80, 0.06);
+  --tint-orange:     rgba(240, 136, 62, 0.07);
+  --tint-purple:     rgba(217, 70, 239, 0.06);
+  --tint-gold:       rgba(210, 153, 34, 0.08);
+  --tint-subagent:   rgba(165, 214, 255, 0.07);
+  --bg-toast:        #1e1e3a;
+  --shadow-panel:    rgba(0, 0, 0, 0.4);
+  --shadow-dropdown: rgba(0, 0, 0, 0.35);
+  /* White-alpha tokens used in inputs, pills, subtle dividers */
+  --bg-input:          rgba(255, 255, 255, 0.05);
+  --border-input:      rgba(255, 255, 255, 0.10);
+  --border-input-hover:rgba(255, 255, 255, 0.25);
+  --border-subtle:     rgba(255, 255, 255, 0.06);
+  --bg-hover-subtle:   rgba(255, 255, 255, 0.06);
+}
+
+/* Light theme overrides — applied when <html data-theme="light"> */
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-surface: #ffffff;
+  --bg-elevated: #eaeef2;
+  --text-primary: #1f2328;
+  --text-secondary: #636c76;
+  --text-tertiary: #9198a1;
+  --border-color: #d1d9e0;
+  --border-hover: #8c959f;
+  /* Tint tokens need more opacity on light backgrounds to remain visible */
+  --tint-blue:       rgba(74, 158, 255, 0.13);
+  --tint-blue-hover: rgba(74, 158, 255, 0.24);
+  --tint-green:      rgba(63, 185, 80, 0.13);
+  --tint-orange:     rgba(240, 136, 62, 0.13);
+  --tint-purple:     rgba(217, 70, 239, 0.11);
+  --tint-gold:       rgba(210, 153, 34, 0.13);
+  --tint-subagent:   rgba(74, 140, 210, 0.13);
+  --bg-toast:        #eaeef2;
+  --shadow-panel:    rgba(0, 0, 0, 0.12);
+  --shadow-dropdown: rgba(0, 0, 0, 0.10);
+  /* White-alpha tokens → solid equivalents on light background */
+  --bg-input:          var(--bg-primary);
+  --border-input:      var(--border-color);
+  --border-input-hover:var(--border-hover);
+  --border-subtle:     var(--border-color);
+  --bg-hover-subtle:   var(--bg-elevated);
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+/* Native form elements — override OS/browser defaults so they follow the active theme */
+select,
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+textarea {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border-input);
+  color-scheme: dark;
+}
+
+[data-theme="light"] select,
+[data-theme="light"] input[type="text"],
+[data-theme="light"] input[type="password"],
+[data-theme="light"] input[type="number"],
+[data-theme="light"] input[type="email"],
+[data-theme="light"] textarea {
+  color-scheme: light;
 }
 
 html, body, #root {

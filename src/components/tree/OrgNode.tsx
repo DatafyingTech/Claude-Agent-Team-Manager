@@ -119,15 +119,15 @@ function OrgNodeInner({ data, selected }: NodeProps) {
   const currentHandleStyle = hovered ? handleHoverStyle : handleBaseStyle;
 
   const background = isPipeline
-    ? "rgba(217, 70, 239, 0.06)"
+    ? "var(--tint-purple)"
     : isGroup
       ? isSubAgent
-        ? "rgba(165, 214, 255, 0.06)"
+        ? "var(--tint-subagent)"
         : isMember
-          ? "rgba(240, 136, 62, 0.06)"
-          : "rgba(74, 158, 255, 0.06)"
+          ? "var(--tint-orange)"
+          : "var(--tint-blue)"
       : isRoot
-        ? "rgba(210, 153, 34, 0.08)"
+        ? "var(--tint-gold)"
         : "var(--bg-surface, #1c2333)";
 
   const borderLeftStyle = isGroup || isPipeline
@@ -194,7 +194,7 @@ function OrgNodeInner({ data, selected }: NodeProps) {
         style={{
           fontWeight: 700,
           fontSize: 14,
-          color: "#fff",
+          color: "var(--text-primary)",
           marginTop: 4,
           marginBottom: 4,
           overflow: "hidden",
@@ -210,7 +210,7 @@ function OrgNodeInner({ data, selected }: NodeProps) {
       <div
         style={{
           fontSize: 12,
-          color: "#a0a0a0",
+          color: "var(--text-secondary)",
           lineHeight: "1.3",
           overflow: "hidden",
           display: "-webkit-box",
@@ -291,7 +291,7 @@ function OrgNodeInner({ data, selected }: NodeProps) {
           <span
             style={{
               fontSize: 10,
-              color: "#a0a0a0",
+              color: "var(--text-tertiary)",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -319,7 +319,7 @@ function OrgNodeInner({ data, selected }: NodeProps) {
                 fontSize: 9,
                 fontWeight: 600,
                 color: "#3fb950",
-                background: "rgba(63, 185, 80, 0.12)",
+                background: "var(--tint-green)",
                 padding: "1px 5px",
                 borderRadius: 8,
                 whiteSpace: "nowrap",

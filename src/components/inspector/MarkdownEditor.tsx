@@ -1,4 +1,5 @@
 import Editor from "@monaco-editor/react";
+import { useUiStore } from "@/store/ui-store";
 
 interface MarkdownEditorProps {
   value: string;
@@ -13,11 +14,12 @@ export function MarkdownEditor({
   readOnly = false,
   height = "300px",
 }: MarkdownEditorProps) {
+  const theme = useUiStore((s) => s.theme);
   return (
     <Editor
       height={height}
       language="markdown"
-      theme="vs-dark"
+      theme={theme === "light" ? "vs" : "vs-dark"}
       value={value}
       onChange={(v) => onChange?.(v ?? "")}
       options={{

@@ -321,7 +321,7 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
         letterSpacing: "0.06em",
         color: "var(--text-secondary)",
         padding: "12px 0 6px",
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        borderBottom: "1px solid var(--bg-hover-subtle)",
         marginBottom: 8,
       }}
     >
@@ -502,7 +502,7 @@ function ImportDropdown({
         background: "var(--bg-surface, #1c2333)",
         border: "1px solid var(--border-color)",
         borderRadius: 8,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+        boxShadow: "0 8px 24px var(--shadow-panel)",
         zIndex: 200,
         padding: 6,
       }}
@@ -513,7 +513,7 @@ function ImportDropdown({
             style={menuItemStyle}
             onClick={handleFileImport}
             disabled={importing}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover-subtle)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
             From File...
@@ -522,7 +522,7 @@ function ImportDropdown({
             style={menuItemStyle}
             onClick={() => setMode("url")}
             disabled={importing}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover-subtle)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
             From GitHub URL
@@ -545,8 +545,8 @@ function ImportDropdown({
               boxSizing: "border-box",
               padding: "7px 10px",
               fontSize: 12,
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.12)",
+              background: "var(--bg-input)",
+              border: "1px solid var(--border-subtle)",
               borderRadius: 6,
               color: "var(--text-primary)",
               outline: "none",
@@ -591,12 +591,12 @@ function UtilityButton({ label, onClick }: { label: string; onClick: () => void 
       onClick={onClick}
       style={{
         padding: "4px 12px", fontSize: 11, fontWeight: 600,
-        background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+        background: "var(--bg-input)", border: "1px solid var(--border-input)",
         color: "var(--text-secondary)", borderRadius: 6, cursor: "pointer",
         transition: "all 0.15s",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; e.currentTarget.style.color = "var(--text-primary)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--border-input-hover)"; e.currentTarget.style.color = "var(--text-primary)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-input)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
     >
       {label}
     </button>
@@ -750,7 +750,7 @@ export function ContextHub() {
         position: "fixed", top: "var(--toolbar-height)", right: 0, bottom: 0,
         width: 480, background: "var(--bg-secondary)",
         borderLeft: "1px solid var(--border-color)",
-        boxShadow: "-4px 0 24px rgba(0,0,0,0.4)",
+        boxShadow: "-4px 0 24px var(--shadow-panel)",
         display: "flex", flexDirection: "column", zIndex: 100,
         animation: "slideInRight 0.2s ease",
       }}
@@ -759,10 +759,8 @@ export function ContextHub() {
       <div
         style={{
           flexShrink: 0,
-          background: "linear-gradient(180deg, rgba(21,27,35,0.95) 0%, rgba(21,27,35,0.85) 100%)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          background: "var(--bg-secondary)",
+          borderBottom: "1px solid var(--border-subtle)",
           padding: "14px 16px 12px",
         }}
       >
@@ -779,7 +777,7 @@ export function ContextHub() {
                   borderRadius: 8, cursor: "pointer",
                   transition: "border-color 0.15s",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--border-input-hover)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-color)"; }}
               >
                 Import
@@ -842,14 +840,14 @@ export function ContextHub() {
             style={{
               width: "100%", boxSizing: "border-box",
               padding: "8px 30px 8px 12px",
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.1)",
+              background: "var(--bg-input)",
+              border: "1px solid var(--border-input)",
               borderRadius: 8, color: "var(--text-primary)",
               fontSize: 13, outline: "none",
               transition: "border-color 0.2s",
             }}
             onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(74,158,255,0.4)"; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-input)"; }}
           />
           {search && (
             <button
@@ -878,7 +876,7 @@ export function ContextHub() {
                   fontSize: 12,
                   fontWeight: 600,
                   borderRadius: 20,
-                  border: isActive ? "1px solid transparent" : "1px solid rgba(255,255,255,0.12)",
+                  border: isActive ? "1px solid transparent" : "1px solid var(--border-subtle)",
                   background: isActive ? "var(--accent-blue)" : "transparent",
                   color: isActive ? "#fff" : "var(--text-secondary)",
                   cursor: "pointer",
@@ -886,10 +884,10 @@ export function ContextHub() {
                   letterSpacing: "0.02em",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)";
+                  if (!isActive) e.currentTarget.style.borderColor = "var(--border-input-hover)";
                 }}
                 onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+                  if (!isActive) e.currentTarget.style.borderColor = "var(--border-subtle)";
                 }}
               >
                 {chip}

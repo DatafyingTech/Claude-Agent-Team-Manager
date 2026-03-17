@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { useUiStore } from "@/store/ui-store";
 
 function detectLanguage(filePath: string): string {
   if (filePath.endsWith(".md")) return "markdown";
@@ -18,6 +19,7 @@ interface FileViewerProps {
 }
 
 export function FileViewer({ filePath, language }: FileViewerProps) {
+  const theme = useUiStore((s) => s.theme);
   const [content, setContent] = useState<string | null>(null);
   const [editedContent, setEditedContent] = useState("");
   const [editing, setEditing] = useState(false);
@@ -138,7 +140,7 @@ export function FileViewer({ filePath, language }: FileViewerProps) {
       <Editor
         height={300}
         language={lang}
-        theme="vs-dark"
+        theme={theme === "light" ? "vs" : "vs-dark"}
         value={editing ? editedContent : (content ?? "")}
         onChange={editing ? (v) => setEditedContent(v ?? "") : undefined}
         options={{
