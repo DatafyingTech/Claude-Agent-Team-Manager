@@ -85,6 +85,28 @@
   box-sizing: border-box;
 }
 
+/* Native form elements — override OS/browser defaults so they follow the active theme */
+select,
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+textarea {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border-input);
+  color-scheme: dark;
+}
+
+[data-theme="light"] select,
+[data-theme="light"] input[type="text"],
+[data-theme="light"] input[type="password"],
+[data-theme="light"] input[type="number"],
+[data-theme="light"] input[type="email"],
+[data-theme="light"] textarea {
+  color-scheme: light;
+}
+
 html, body, #root {
   height: 100%;
   width: 100%;
