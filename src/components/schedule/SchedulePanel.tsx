@@ -31,9 +31,9 @@ const panelStyle: CSSProperties = {
 };
 
 const inputStyle: CSSProperties = {
-  background: "#1a1a2e",
-  border: "1px solid #2a2a4a",
-  color: "white",
+  background: "var(--bg-input)",
+  border: "1px solid var(--border-input)",
+  color: "var(--text-primary)",
   padding: 8,
   borderRadius: 4,
   width: "100%",
@@ -459,7 +459,7 @@ IMPORTANT: Each agent already has their full skill file content above. Pass it d
           <div
             style={{
               padding: 14,
-              background: "#1a1a2e",
+              background: "var(--bg-elevated)",
               border: "1px solid var(--accent-purple)",
               borderRadius: 8,
               marginBottom: 16,

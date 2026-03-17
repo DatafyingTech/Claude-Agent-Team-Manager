@@ -41,6 +41,12 @@
   --bg-toast:        #1e1e3a;
   --shadow-panel:    rgba(0, 0, 0, 0.4);
   --shadow-dropdown: rgba(0, 0, 0, 0.35);
+  /* White-alpha tokens used in inputs, pills, subtle dividers */
+  --bg-input:          rgba(255, 255, 255, 0.05);
+  --border-input:      rgba(255, 255, 255, 0.10);
+  --border-input-hover:rgba(255, 255, 255, 0.25);
+  --border-subtle:     rgba(255, 255, 255, 0.06);
+  --bg-hover-subtle:   rgba(255, 255, 255, 0.06);
 }
 
 /* Light theme overrides — applied when <html data-theme="light"> */
@@ -65,6 +71,12 @@
   --bg-toast:        #eaeef2;
   --shadow-panel:    rgba(0, 0, 0, 0.12);
   --shadow-dropdown: rgba(0, 0, 0, 0.10);
+  /* White-alpha tokens → solid equivalents on light background */
+  --bg-input:          var(--bg-primary);
+  --border-input:      var(--border-color);
+  --border-input-hover:var(--border-hover);
+  --border-subtle:     var(--border-color);
+  --bg-hover-subtle:   var(--bg-elevated);
 }
 
 * {
