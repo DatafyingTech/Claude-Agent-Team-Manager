@@ -9,7 +9,9 @@
 **Your Claude agents are scattered across dozens of markdown files and you can't remember which one writes Python tests.**
 
 ATM turns your `.claude/` folder from a graveyard of forgotten agent definitions into an org chart you can actually use. Drag-drop to build teams, click once to deploy 100+ agents in parallel, schedule them to run on cron. It's the missing UI layer between "I wrote some agent configs" and "I have an AI team that runs while I'm away."
-<img width="960" height="541" alt="image" src="https://github.com/user-attachments/assets/bb2e1c3b-0ea0-4b49-8119-08893e0b7970" />
+
+<img width="960" height="541" alt="atm-demo" src="https://github.com/user-attachments/assets/96f6c868-452b-41e3-a9b3-ebc9db68172f" />
+
 
 ---
 ### Video Demo
