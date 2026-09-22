@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, type CSSProperties, type KeyboardEven
 import Editor from "@monaco-editor/react";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { useTreeStore } from "@/store/tree-store";
+import { useUiStore } from "@/store/ui-store";
 import { useAutosave } from "@/hooks/useAutosave";
 import { getApiKey, generateText } from "@/services/claude-api";
 import { toast } from "@/components/common/Toast";
@@ -168,6 +169,7 @@ interface AgentEditorProps {
 export function AgentEditor({ node }: AgentEditorProps) {
   const updateNode = useTreeStore((s) => s.updateNode);
   const saveNode = useTreeStore((s) => s.saveNode);
+  const theme = useUiStore((s) => s.theme);
 
   const cfg = (node.config as AgentConfig | null) ?? { name: node.name };
 
@@ -482,7 +484,7 @@ export function AgentEditor({ node }: AgentEditorProps) {
           <Editor
             height={100}
             language="json"
-            theme="vs-dark"
+            theme={theme === "light" ? "vs" : "vs-dark"}
             value={hooksJson}
             options={{
               readOnly: true,

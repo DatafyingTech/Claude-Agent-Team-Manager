@@ -19,6 +19,7 @@ import { useUiStore } from "./store/ui-store";
 import { startWatching } from "./services/file-watcher";
 
 function App() {
+  const theme = useUiStore((s) => s.theme);
   const inspectorOpen = useUiStore((s) => s.inspectorOpen);
   const createDialogOpen = useUiStore((s) => s.createDialogOpen);
   const closeCreateDialog = useUiStore((s) => s.closeCreateDialog);
@@ -132,7 +133,13 @@ function App() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Apply theme to DOM whenever it changes
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
   // Load project on mount — use saved projectPath if available, else home directory
+  // Also restore saved theme preference.
   useEffect(() => {
     (async () => {
       const home = await homeDir();
@@ -147,6 +154,9 @@ function App() {
             if (await exists(parsed.projectPath)) {
               targetPath = parsed.projectPath;
             }
+          }
+          if (parsed.theme === "light" || parsed.theme === "dark") {
+            useUiStore.getState().setTheme(parsed.theme);
           }
         }
       } catch {

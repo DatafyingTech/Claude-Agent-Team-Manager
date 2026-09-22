@@ -37,6 +37,7 @@ interface UiState {
   toasts: Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>;
   collapsedGroups: Set<string>;
   multiSelectedNodeIds: Set<string>;
+  theme: "dark" | "light";
 }
 
 interface RemoteActions {
@@ -87,6 +88,7 @@ interface UiActions {
   clearMultiSelect(): void;
   collapseAllGroups(groupIds: Set<string>): void;
   expandAllGroups(): void;
+  setTheme(theme: "dark" | "light"): void;
 }
 
 type UiStore = UiState & RemoteState & UiActions & RemoteActions;
@@ -113,6 +115,7 @@ export const useUiStore = create<UiStore>()((set, get) => ({
   toasts: [],
   collapsedGroups: new Set<string>(),
   multiSelectedNodeIds: new Set<string>(),
+  theme: "dark",
 
   // ── Remote state ──────────────────────────────────
   remoteConfig: { ...DEFAULT_REMOTE_CONFIG },
@@ -268,6 +271,10 @@ export const useUiStore = create<UiStore>()((set, get) => ({
 
   expandAllGroups() {
     set({ collapsedGroups: new Set<string>() });
+  },
+
+  setTheme(theme: "dark" | "light") {
+    set({ theme });
   },
 
   // ── Remote actions ──────────────────────────────────

@@ -544,7 +544,7 @@ IMPORTANT: The JSON must contain exactly ${teamCount} objects in the "teams" arr
               alignItems: "center",
               justifyContent: "space-between",
               padding: "6px 8px",
-              background: "rgba(63, 185, 80, 0.05)",
+              background: "var(--tint-green)",
               border: "1px solid var(--border-color)",
               borderRadius: 4,
               marginBottom: 4,
@@ -676,15 +676,15 @@ IMPORTANT: The JSON must contain exactly ${teamCount} objects in the "teams" arr
                   alignItems: "center",
                   gap: 8,
                   padding: "6px 8px",
-                  background: "rgba(74, 158, 255, 0.05)",
+                  background: "var(--tint-blue)",
                   border: "1px solid var(--border-color)",
                   borderRadius: 4,
                   marginBottom: 4,
                   cursor: "pointer",
                   transition: "background 0.15s",
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(74, 158, 255, 0.12)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(74, 158, 255, 0.05)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--tint-blue-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "var(--tint-blue)"; }}
               >
                 <span style={{
                   display: "inline-block",

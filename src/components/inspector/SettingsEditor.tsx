@@ -1,6 +1,7 @@
 import { useState, useEffect, type CSSProperties, type KeyboardEvent } from "react";
 import Editor from "@monaco-editor/react";
 import { useTreeStore } from "@/store/tree-store";
+import { useUiStore } from "@/store/ui-store";
 import type { AuiNode } from "@/types/aui-node";
 import type { SettingsConfig } from "@/types/settings";
 
@@ -213,6 +214,7 @@ interface SettingsEditorProps {
 export function SettingsEditor({ node }: SettingsEditorProps) {
   const updateNode = useTreeStore((s) => s.updateNode);
   const saveNode = useTreeStore((s) => s.saveNode);
+  const theme = useUiStore((s) => s.theme);
 
   const cfg = (node.config as SettingsConfig | null) ?? {};
 
@@ -328,7 +330,7 @@ export function SettingsEditor({ node }: SettingsEditorProps) {
         <Editor
           height={500}
           language="json"
-          theme="vs-dark"
+          theme={theme === "light" ? "vs" : "vs-dark"}
           value={rawJson}
           onChange={(v) => setRawJson(v ?? "")}
           options={{

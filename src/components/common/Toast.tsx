@@ -59,13 +59,15 @@ function ToastItem({ entry }: { entry: ToastEntry }) {
   return (
     <div
       style={{
-        background: "#1e1e3a",
+        background: "var(--bg-toast)",
         borderLeft: `4px solid ${borderColors[entry.type]}`,
+        border: `1px solid var(--border-color)`,
+        borderLeftWidth: 4,
         borderRadius: 6,
         padding: "10px 16px",
         color: "var(--text-primary)",
         fontSize: 13,
-        boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
+        boxShadow: "0 2px 12px var(--shadow-dropdown)",
         animation: entry.leaving
           ? "aui-toast-out 0.3s forwards"
           : "aui-toast-in 0.25s ease-out",
